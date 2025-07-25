@@ -101,7 +101,7 @@ const SimulatorPage: React.FC = () => {
                         <label className="text-lg font-medium">Simulation Method</label>
                         <select
                             value={simulationMethod}
-                            onChange={(e) => setSimulationMethod(e.target.value)}
+                            onChange={(e) => setSimulationMethod(e.target.value as 'hybrid_qml' | 'quantum_monte_carlo' | 'quantum_walk' | 'classical_baseline')}
                             className="bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500"
                         >
                             <option value="hybrid_qml">Hybrid Quantum-ML (Recommended)</option>
@@ -119,7 +119,7 @@ const SimulatorPage: React.FC = () => {
                     </button>
 
                     <AnimatePresence>
-                        {showAdvanced && (
+                    {showAdvanced && (
                             <motion.div
                                 initial={{ height: 0, opacity: 0 }}
                                 animate={{ height: 'auto', opacity: 1 }}

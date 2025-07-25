@@ -6,9 +6,6 @@ import logging
 from typing import Dict, Set
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
-from starlette.applications import WebSocketRoute
-from starlette.routing import Mount
-from starlette.websockets import WebSocketState
 
 from app.models.schemas import WSMessage, SimulationProgress
 
@@ -178,14 +175,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error for {client_id}: {e}")
         manager.disconnect(client_id)
-        if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.close()
-
-
-# Create WebSocket app
-app = Mount("/", routes=[
-    WebSocketRoute("/", websocket_endpoint)
-])
+        await websocket.close()
 
 
 # Helper functions for other services to send updates

@@ -17,6 +17,9 @@ from app.services.market_simulator import MarketSimulator
 from app.quantum.classiq_client import ClassiqClient
 from app.utils.helpers import setup_logging
 
+from app.api import routes
+from app.api.websocket import websocket_endpoint
+
 # Setup logging
 logger = setup_logging(__name__)
 

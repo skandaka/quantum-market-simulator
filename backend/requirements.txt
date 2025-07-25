@@ -1,36 +1,56 @@
-# Core
-fastapi
-uvicorn[standard]
-python-dotenv
-pydantic
-pydantic-settings
+# Core dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==1.10.13
+python-multipart==0.0.6
+python-dotenv==1.0.0
 
-# Quantum - Use latest available
-classiq
-qiskit>=1.0.0
+# WebSocket support
+websockets==12.0
+python-socketio==5.10.0
 
-# ML/NLP - Basic versions
-transformers
-torch>=2.0.0
-scikit-learn
-nltk
-textblob
+# Data processing
+numpy==1.24.3
+pandas==2.0.3
+scipy==1.11.4
 
-# Data & APIs
-pandas
-numpy
-yfinance
-requests
-aiohttp
-beautifulsoup4
+# Machine Learning
+torch==2.1.1
+transformers==4.35.2
+scikit-learn==1.3.2
+joblib==1.3.2
 
-# Web & Async
-websockets
-redis
-python-multipart
+# NLP
+spacy==3.7.2
+textblob==0.17.1
+newspaper3k==0.2.8
 
-# Utils
-matplotlib
-plotly
-scipy
-joblib
+# Quantum Computing (Classiq will be separate)
+qiskit==0.45.0
+
+# Market Data
+yfinance==0.2.33
+alpha-vantage==2.3.1
+tweepy==4.14.0
+
+# API and networking
+aiohttp==3.9.1
+requests==2.31.0
+feedparser==6.0.10
+
+# Caching and queuing
+redis==5.0.1
+aioredis==2.0.1
+
+# Utilities
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Development
+black==23.11.0
+flake8==6.1.0
