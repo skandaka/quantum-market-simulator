@@ -1,0 +1,99 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    @apply bg-gray-800;
+}
+
+::-webkit-scrollbar-thumb {
+    @apply bg-gray-600 rounded;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500;
+}
+
+/* Animations */
+@keyframes pulse-quantum {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.animate-pulse-quantum {
+    animation: pulse-quantum 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Quantum gradient */
+.quantum-gradient {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+/* Glass morphism effect */
+.glass {
+    background: rgba(31, 41, 55, 0.8);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(75, 85, 99, 0.2);
+}
+
+/* Chart styles */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+    @apply stroke-gray-700;
+}
+
+.recharts-text {
+    @apply fill-gray-300;
+}
+
+/* Loading skeleton */
+.skeleton {
+    @apply bg-gray-700 animate-pulse rounded;
+}
+
+/* Custom tooltip */
+.custom-tooltip {
+    @apply bg-gray-800 border border-gray-700 rounded-lg p-3 shadow-xl;
+}
+
+/* Neon glow effect */
+.neon-glow {
+    text-shadow: 0 0 10px rgba(139, 92, 246, 0.8),
+    0 0 20px rgba(139, 92, 246, 0.6),
+    0 0 30px rgba(139, 92, 246, 0.4);
+}
+
+/* Quantum circuit animation */
+@keyframes quantum-flow {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.quantum-flow::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(139, 92, 246, 0.4) 50%,
+    transparent 100%
+    );
+    animation: quantum-flow 3s linear infinite;
+}

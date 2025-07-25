@@ -1,0 +1,36 @@
+# Core
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+pydantic-settings
+
+# Quantum - Use latest available
+classiq
+qiskit>=1.0.0
+
+# ML/NLP - Basic versions
+transformers
+torch>=2.0.0
+scikit-learn
+nltk
+textblob
+
+# Data & APIs
+pandas
+numpy
+yfinance
+requests
+aiohttp
+beautifulsoup4
+
+# Web & Async
+websockets
+redis
+python-multipart
+
+# Utils
+matplotlib
+plotly
+scipy
+joblib
