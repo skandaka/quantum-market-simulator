@@ -1,106 +1,16 @@
-# =============================================================================
-#  Gitignore for Quantum Market Reaction Simulator
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Python / Backend
-# -----------------------------------------------------------------------------
-
-# Virtual Environment
-# Never commit your virtual environment folder.
+# Python
 venv/
-
-# Python cache files
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+.env
 
-# Environment variables
-# This is CRITICAL. Contains secret API keys and should never be in version control.
-backend/.env
-
-# Testing artifacts
-.pytest_cache/
-.coverage
-htmlcov/
-
-# -----------------------------------------------------------------------------
-# Node.js / Frontend
-# -----------------------------------------------------------------------------
-
-# Dependencies
-# This folder is massive and can be re-created by running `npm install`.
+# Node
 frontend/node_modules/
-
-# Build output
-# The compiled/bundled application code. Generated during the build process.
+frontend/.DS_Store
 frontend/dist/
-.next/
-out/
+frontend/.env
 
-# Local environment variables for the frontend
-frontend/.env.local
-frontend/.env.*.local
-
-# Log files
-npm-debug.log*
-yarn-error.log
-yarn-debug.log
-
-# -----------------------------------------------------------------------------
-# IDE and Editor Configuration
-# -----------------------------------------------------------------------------
-
-# VS Code
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
-!.vscode/launch.json
-
-# JetBrains (PyCharm, WebStorm, etc.)
+# IDE / OS files
+.vscode/
 .idea/
-
-# Sublime Text
-*.sublime-project
-*.sublime-workspace
-
-# -----------------------------------------------------------------------------
-# Jupyter Notebooks
-# -----------------------------------------------------------------------------
-
-# Notebook checkpoints are auto-saves and can be ignored.
-.ipynb_checkpoints/
-
-# -----------------------------------------------------------------------------
-# Data Files (Optional)
-# -----------------------------------------------------------------------------
-
-# For the hackathon, you might commit small sample data files.
-# For a real-world project, you would uncomment the lines below to
-# ignore large datasets that should be stored elsewhere (like S3).
-# data/*.csv
-# data/*.json
-# data/*.parquet
-
-# -----------------------------------------------------------------------------
-# OS-specific files
-# -----------------------------------------------------------------------------
-
-# macOS
 .DS_Store
-.AppleDouble
-.LSOverride
-
-# Windows
-Thumbs.db
-ehthumbs.db
-ehthumbs_vista.db
-Desktop.ini
-
-# -----------------------------------------------------------------------------
-# Logs and Temporary Files
-# -----------------------------------------------------------------------------
-
-*.log
-*.tmp
-*.swp
