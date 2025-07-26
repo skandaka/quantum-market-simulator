@@ -7,7 +7,11 @@ RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     git \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install setuptools
+RUN pip install --upgrade pip setuptools wheel
 
 # Copy requirements first for better caching
 COPY requirements.txt .

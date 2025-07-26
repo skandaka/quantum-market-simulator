@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Set
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
+from fastapi.applications import FastAPI
 
 from app.models.schemas import WSMessage, SimulationProgress
 
@@ -176,6 +177,16 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket error for {client_id}: {e}")
         manager.disconnect(client_id)
         await websocket.close()
+
+
+# Create WebSocket app
+app = FastAPI()
+
+
+@app.websocket("/")
+async def websocket_route(websocket: WebSocket):
+    """WebSocket route"""
+    await websocket_endpoint(websocket)
 
 
 # Helper functions for other services to send updates

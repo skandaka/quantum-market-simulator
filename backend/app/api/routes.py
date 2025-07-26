@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse
 import logging
+import json
 
 from app.models.schemas import (
     SimulationRequest, SimulationResponse, BacktestRequest,
@@ -71,7 +72,7 @@ async def run_simulation(
         data_fetcher = MarketDataFetcher()
         market_data = await data_fetcher.fetch_assets(
             request.target_assets,
-            request.asset_type
+            request.asset_type.value if request.asset_type else "stock"
         )
 
         # Run market simulation
@@ -149,8 +150,12 @@ async def analyze_sentiment(
             quantum_client=services["classiq_client"]
         )
 
+        # Process the news input first
+        news_processor = NewsProcessor()
+        processed_news = await news_processor.process_single(news_input)
+
         result = await sentiment_analyzer.analyze_single(
-            news_input,
+            processed_news,
             use_quantum=use_quantum
         )
 
@@ -280,7 +285,7 @@ async def stream_simulation(
 
         try:
             # Send initial message
-            yield f"data: {{'type': 'start', 'request_id': '{request_id}'}}\n\n"
+            yield f"data: {json.dumps({'type': 'start', 'request_id': request_id})}\n\n"
 
             # Simulate progress updates
             stages = [
@@ -299,13 +304,13 @@ async def stream_simulation(
                     "stage": stage,
                     "progress": progress
                 }
-                yield f"data: {message}\n\n"
+                yield f"data: {json.dumps(message)}\n\n"
 
             # Send completion
-            yield f"data: {{'type': 'complete', 'request_id': '{request_id}'}}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'request_id': request_id})}\n\n"
 
         except Exception as e:
-            yield f"data: {{'type': 'error', 'error': '{str(e)}'}}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
 
     return StreamingResponse(
         event_generator(),

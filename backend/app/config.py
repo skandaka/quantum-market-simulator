@@ -2,10 +2,10 @@
 
 import os
 from typing import List, Optional
-from pydantic import BaseSettings
+from pydantic import BaseSettings as PydanticBaseSettings
 
 
-class Settings(BaseSettings):
+class Settings(PydanticBaseSettings):
     """Application settings"""
 
     # App settings

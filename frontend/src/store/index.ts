@@ -13,7 +13,7 @@ export const store = configureStore({
         market: marketReducer,
         ui: uiReducer,
     },
-    middleware: (getDefaultMiddleware) =>
+    middleware: getDefaultMiddleware =>
         getDefaultMiddleware({
             serializableCheck: {
                 // Ignore these action types

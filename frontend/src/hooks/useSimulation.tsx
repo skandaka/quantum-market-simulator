@@ -8,7 +8,7 @@ import {
     setSimulationProgress,
     setSimulationError
 } from '../store/slices/simulationSlice';
-import { SimulationRequest, SimulationResponse } from '../types';
+import { SimulationRequest } from '../types';
 import toast from 'react-hot-toast';
 
 export const useSimulation = () => {
@@ -25,7 +25,7 @@ export const useSimulation = () => {
         });
 
         socketInstance.on('connect', () => {
-            console.log('WebSocket connected');
+            // console.log('WebSocket connected');
         });
 
         socketInstance.on('progress', (data) => {
@@ -51,14 +51,13 @@ export const useSimulation = () => {
         dispatch(setSimulationStatus('running'));
 
         try {
-            // Subscribe to simulation updates if WebSocket is connected
-            if (socket && socket.connected) {
-                const response = await simulationAPI.runSimulation(request);
-                socket.emit('subscribe', { channel: `simulation:${response.request_id}` });
-            }
-
             // Run the simulation
             const response = await simulationAPI.runSimulation(request);
+
+            // Subscribe to simulation updates if WebSocket is connected
+            if (socket && socket.connected) {
+                socket.emit('subscribe', { channel: `simulation:${response.request_id}` });
+            }
 
             dispatch(setSimulationResults(response));
             dispatch(setSimulationStatus('completed'));

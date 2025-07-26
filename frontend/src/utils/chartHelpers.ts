@@ -37,9 +37,7 @@ export const interpolatePath = (path1: number[], path2: number[], t: number): nu
         throw new Error('Paths must have the same length');
     }
 
-    return path1.map((val, i) => {
-        return val + (path2[i] - val) * t;
-    });
+    return path1.map((val, i) => val + (path2[i] - val) * t);
 };
 
 export const calculateMovingAverage = (data: number[], window: number): number[] => {
@@ -89,7 +87,7 @@ export const generateSparklineData = (values: number[], width: number = 100, hei
         .range([height, 0]);
 
     const line = d3.line<number>()
-        .x((_, i) => xScale(i))
+        .x((_d, i) => xScale(i))
         .y(d => yScale(d))
         .curve(d3.curveMonotoneX);
 

@@ -5,9 +5,8 @@ import {
     BeakerIcon,
     ClockIcon,
     CpuChipIcon,
-    ChartBarIcon,
     ArrowsRightLeftIcon,
-    ArrowDownTrayIcon, // Fixed: Changed from DocumentDownloadIcon
+    ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 
 interface ResultsDashboardProps {
@@ -29,7 +28,6 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, compareCla
         linkElement.setAttribute('download', exportFileDefaultName);
         linkElement.click();
     };
-
 
     return (
         <div className="bg-gray-800 rounded-xl p-6 shadow-xl">
@@ -284,8 +282,8 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, compareCla
                     <div className="bg-gray-700 rounded-lg p-5">
                         <h3 className="text-lg font-semibold mb-3">API Response Structure</h3>
                         <pre className="text-xs overflow-x-auto bg-gray-800 p-4 rounded">
-              {JSON.stringify(results, null, 2).substring(0, 500)}...
-            </pre>
+                            {JSON.stringify(results, null, 2).substring(0, 500)}...
+                        </pre>
                     </div>
                 </motion.div>
             )}

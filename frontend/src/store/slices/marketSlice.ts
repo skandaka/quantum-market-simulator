@@ -25,10 +25,10 @@ const marketSlice = createSlice({
             state.marketData[action.payload.asset] = action.payload.data;
             state.lastUpdate = new Date().toISOString();
         },
-        toggleRealtime: (state) => {
+        toggleRealtime: state => {
             state.isRealtime = !state.isRealtime;
         },
-        clearMarketData: (state) => {
+        clearMarketData: state => {
             state.marketData = {};
             state.lastUpdate = null;
         },

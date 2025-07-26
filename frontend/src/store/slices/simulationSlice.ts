@@ -38,7 +38,7 @@ const simulationSlice = createSlice({
             state.error = action.payload;
             state.status = 'error';
         },
-        clearSimulation: (state) => {
+        clearSimulation: state => {
             state.results = null;
             state.status = 'idle';
             state.progress = 0;

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from app.quantum.classiq_client import ClassiqClient
 from app.quantum.circuit_builder import CircuitBuilder
 from app.models.schemas import PriceScenario, MarketPrediction
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ class QuantumSimulator:
             # Run multiple shots for scenario generation
             result = await self.classiq_client.execute_circuit(
                 circuit_id,
+                backend=settings.quantum_backend,
                 shots=num_scenarios * 2  # Extra shots for better statistics
             )
 

@@ -21,10 +21,10 @@ const uiSlice = createSlice({
     name: 'ui',
     initialState,
     reducers: {
-        toggleTheme: (state) => {
+        toggleTheme: state => {
             state.theme = state.theme === 'dark' ? 'light' : 'dark';
         },
-        toggleSidebar: (state) => {
+        toggleSidebar: state => {
             state.sidebarOpen = !state.sidebarOpen;
         },
         addNotification: (state, action: PayloadAction<Omit<UIState['notifications'][0], 'id' | 'timestamp'>>) => {
@@ -37,7 +37,7 @@ const uiSlice = createSlice({
         removeNotification: (state, action: PayloadAction<string>) => {
             state.notifications = state.notifications.filter(n => n.id !== action.payload);
         },
-        clearNotifications: (state) => {
+        clearNotifications: state => {
             state.notifications = [];
         },
     },

@@ -12,13 +12,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 import uvicorn
 
 from app.config import settings
-from app.api import routes, websocket
+from app.api import routes
+from app.api.websocket import app as websocket_app
 from app.services.market_simulator import MarketSimulator
 from app.quantum.classiq_client import ClassiqClient
 from app.utils.helpers import setup_logging
-
-from app.api import routes
-from app.api.websocket import websocket_endpoint
 
 # Setup logging
 logger = setup_logging(__name__)
@@ -109,7 +107,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # Include routers
 app.include_router(routes.router, prefix="/api/v1")
-app.mount("/ws", websocket.app)
+app.mount("/ws", websocket_app)
 
 
 @app.get("/")
