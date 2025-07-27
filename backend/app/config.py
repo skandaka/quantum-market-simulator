@@ -2,8 +2,8 @@
 
 import os
 from typing import List, Optional
-from pydantic import BaseSettings as PydanticBaseSettings
-
+from pydantic_settings import BaseSettings as PydanticBaseSettings
+from pydantic_settings import SettingsConfigDict
 
 class Settings(PydanticBaseSettings):
     """Application settings"""
@@ -55,8 +55,7 @@ class Settings(PydanticBaseSettings):
     confidence_intervals: List[float] = [0.68, 0.95]  # 1σ and 2σ
 
     class Config:
-        env_file = ".env"
-        case_sensitive = False
+        model_config = SettingsConfigDict(env_file=".env", env_file_encoding='utf-8', extra='allow')
 
 
 # Create settings instance

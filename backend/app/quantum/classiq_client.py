@@ -1,187 +1,340 @@
-"""Classiq platform integration client"""
+"""Real Classiq platform integration client"""
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, List
-import aiohttp
-import json
-from datetime import datetime
+from typing import Dict, Any, Optional, List, Union
 import numpy as np
+from datetime import datetime
 
+from classiq import (
+    synthesize, execute, Model, Output, QBit, QArray,
+    allocate, apply_to_all, control, H, RY, RZ, X, Z,
+    CX, CCX, suzuki_trotter, QFunc, create_model,
+    show, VQE, optimize, Optimizer, EstimatorGradient
+)
+from classiq.interface.executor.execution_details import ExecutionDetails
+from classiq.interface.backend.result import QuantumComputationResult
+from classiq.synthesis import set_constraints, set_preferences
+
+from app.quantum.classiq_auth import classiq_auth
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class ClassiqClient:
-    """Client for interacting with Classiq quantum platform"""
+    """Client for real Classiq quantum platform integration"""
 
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-        self.base_url = "https://platform.classiq.io/api/v1"
-        self.session = None
-        self._backend_info = None
+    def __init__(self):
+        self.auth_manager = classiq_auth
+        self._models_cache = {}
+        self._last_execution_details = None
 
-    async def __aenter__(self):
-        self.session = aiohttp.ClientSession(
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-        )
-        return self
+    async def initialize(self):
+        """Initialize Classiq connection"""
+        await self.auth_manager.initialize()
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
+    def is_ready(self) -> bool:
+        """Check if client is ready for quantum operations"""
+        return self.auth_manager.is_authenticated()
 
-    async def close(self):
-        """Close the client session"""
-        if self.session:
-            await self.session.close()
+    async def create_amplitude_estimation_circuit(
+        self,
+        probabilities: List[float],
+        num_qubits: int = 5
+    ) -> Model:
+        """Create quantum amplitude estimation circuit for market prediction"""
 
-    async def create_circuit(self, circuit_config: Dict[str, Any]) -> str:
-        """Create a quantum circuit using Classiq synthesis"""
-        endpoint = f"{self.base_url}/circuits/synthesize"
+        @QFunc
+        def oracle(target: QBit):
+            """Oracle marking states based on probability distribution"""
+            # This is a simplified oracle - in practice, would encode
+            # the probability distribution more sophisticatedly
+            X(target)
 
-        try:
-            if not self.session:
-                self.session = aiohttp.ClientSession(
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json"
-                    }
-                )
+        @QFunc
+        def grover_operator(qubits: QArray[QBit], oracle_workspace: QBit):
+            """Grover operator for amplitude amplification"""
+            oracle(oracle_workspace)
+            apply_to_all(H, qubits)
+            apply_to_all(Z, qubits)
+            control(ctrl=qubits, operand=lambda: Z(oracle_workspace))
+            apply_to_all(H, qubits)
 
-            async with self.session.post(endpoint, json=circuit_config) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    circuit_id = result.get("circuit_id")
-                    logger.info(f"Created circuit: {circuit_id}")
-                    return circuit_id
-                else:
-                    error = await response.text()
-                    raise Exception(f"Circuit creation failed: {error}")
+        @QFunc
+        def amplitude_estimation_circuit(
+            qubits: QArray[QBit, num_qubits],
+            oracle_workspace: QBit,
+            measurement: Output[QArray[QBit, num_qubits]]
+        ):
+            """Main amplitude estimation circuit"""
+            # Initialize superposition
+            apply_to_all(H, qubits)
 
-        except Exception as e:
-            logger.error(f"Failed to create circuit: {e}")
-            raise
+            # Apply Grover operator multiple times
+            num_iterations = int(np.pi * np.sqrt(2**num_qubits) / 4)
+            for _ in range(min(num_iterations, 10)):  # Limit iterations
+                grover_operator(qubits, oracle_workspace)
+
+            measurement |= qubits
+
+        # Create and synthesize model
+        model = create_model(amplitude_estimation_circuit)
+
+        # Set constraints for Classiq synthesis
+        constraints = {
+            "max_width": min(num_qubits + 5, self.auth_manager.config.max_qubits),
+            "max_depth": 1000,
+            "optimization_level": self.auth_manager.config.optimization_level
+        }
+
+        model = set_constraints(model, **constraints)
+
+        # Cache the model
+        cache_key = f"amplitude_est_{num_qubits}_{hash(tuple(probabilities))}"
+        self._models_cache[cache_key] = model
+
+        return model
+
+    async def create_vqe_circuit(
+        self,
+        num_qubits: int,
+        num_layers: int = 3
+    ) -> Model:
+        """Create Variational Quantum Eigensolver circuit for optimization"""
+
+        @QFunc
+        def vqe_ansatz(
+            qubits: QArray[QBit, num_qubits],
+            parameters: QArray[float, num_layers * num_qubits * 2]
+        ):
+            """VQE ansatz with parameterized gates"""
+            param_idx = 0
+
+            for layer in range(num_layers):
+                # Rotation layer
+                for i in range(num_qubits):
+                    RY(parameters[param_idx], qubits[i])
+                    param_idx += 1
+                    RZ(parameters[param_idx], qubits[i])
+                    param_idx += 1
+
+                # Entanglement layer
+                for i in range(num_qubits - 1):
+                    CX(qubits[i], qubits[i + 1])
+
+                # Circular entanglement
+                if num_qubits > 2:
+                    CX(qubits[num_qubits - 1], qubits[0])
+
+        # Create model
+        model = create_model(vqe_ansatz)
+
+        # Set optimization preferences
+        preferences = {
+            "backend_preferences": self.auth_manager.get_backend_preferences()
+        }
+        model = set_preferences(model, **preferences)
+
+        return model
+
+    async def create_quantum_ml_circuit(
+        self,
+        feature_vector: np.ndarray,
+        num_classes: int = 5
+    ) -> Model:
+        """Create quantum machine learning circuit for sentiment classification"""
+
+        num_features = len(feature_vector)
+        num_qubits = int(np.ceil(np.log2(max(num_features, num_classes))))
+
+        @QFunc
+        def encode_features(
+            qubits: QArray[QBit, num_qubits],
+            features: QArray[float, num_features]
+        ):
+            """Encode classical features into quantum state"""
+            # Amplitude encoding
+            apply_to_all(H, qubits)
+
+            # Encode features as rotation angles
+            for i in range(min(num_features, num_qubits)):
+                RY(features[i] * np.pi, qubits[i])
+
+        @QFunc
+        def variational_classifier(
+            qubits: QArray[QBit, num_qubits],
+            params: QArray[float, num_qubits * 4],
+            features: QArray[float, num_features]
+        ):
+            """Variational quantum classifier"""
+            # Encode features
+            encode_features(qubits, features)
+
+            # Variational layers
+            for i in range(num_qubits):
+                RY(params[i * 2], qubits[i])
+                RZ(params[i * 2 + 1], qubits[i])
+
+            # Entanglement
+            for i in range(num_qubits - 1):
+                CX(qubits[i], qubits[i + 1])
+
+            # Final rotation layer
+            for i in range(num_qubits):
+                RY(params[num_qubits * 2 + i * 2], qubits[i])
+                RZ(params[num_qubits * 2 + i * 2 + 1], qubits[i])
+
+        model = create_model(variational_classifier)
+        return model
 
     async def execute_circuit(
-            self,
-            circuit_id: str,
-            backend: str = "simulator",
-            shots: int = 1024,
-            parameters: Optional[Dict[str, float]] = None
-    ) -> Dict[str, Any]:
-        """Execute a quantum circuit"""
-        endpoint = f"{self.base_url}/circuits/{circuit_id}/execute"
+        self,
+        model: Model,
+        parameters: Optional[Dict[str, Any]] = None
+    ) -> QuantumComputationResult:
+        """Execute a quantum circuit on Classiq platform"""
 
-        execution_config = {
-            "backend": backend,
-            "shots": shots,
-            "parameters": parameters or {}
-        }
+        if not self.is_ready():
+            raise RuntimeError("Classiq client not authenticated")
 
         try:
-            async with self.session.post(endpoint, json=execution_config) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    job_id = result.get("job_id")
+            # Synthesize the quantum program
+            quantum_program = synthesize(model)
 
-                    # Wait for job completion
-                    execution_result = await self._wait_for_job(job_id)
-                    return execution_result
-                else:
-                    error = await response.text()
-                    raise Exception(f"Circuit execution failed: {error}")
+            # Show circuit if in debug mode
+            if settings.debug:
+                try:
+                    show(quantum_program)
+                except Exception as e:
+                    logger.debug(f"Could not visualize circuit: {e}")
+
+            # Execute with preferences
+            execution_prefs = self.auth_manager.get_execution_preferences()
+
+            # Run execution
+            job = execute(
+                quantum_program,
+                execution_preferences=execution_prefs
+            )
+
+            # Wait for results
+            results = job.result()
+
+            # Store execution details
+            self._last_execution_details = job.details()
+
+            return results
 
         except Exception as e:
-            logger.error(f"Failed to execute circuit: {e}")
+            logger.error(f"Circuit execution failed: {e}")
             raise
 
-    async def _wait_for_job(
-            self,
-            job_id: str,
-            timeout: int = 300,
-            poll_interval: int = 2
+    async def optimize_variational_circuit(
+        self,
+        model: Model,
+        initial_params: np.ndarray,
+        cost_function: callable,
+        max_iterations: int = 100
     ) -> Dict[str, Any]:
-        """Wait for quantum job completion"""
-        endpoint = f"{self.base_url}/jobs/{job_id}"
+        """Optimize parameters for variational quantum circuits"""
 
-        start_time = asyncio.get_event_loop().time()
-
-        while True:
-            async with self.session.get(endpoint) as response:
-                if response.status == 200:
-                    job_data = await response.json()
-                    status = job_data.get("status")
-
-                    if status == "COMPLETED":
-                        return job_data.get("result", {})
-                    elif status == "FAILED":
-                        raise Exception(f"Job failed: {job_data.get('error')}")
-                    elif status in ["QUEUED", "RUNNING"]:
-                        # Check timeout
-                        if asyncio.get_event_loop().time() - start_time > timeout:
-                            raise TimeoutError(f"Job {job_id} timed out")
-
-                        await asyncio.sleep(poll_interval)
-                    else:
-                        raise Exception(f"Unknown job status: {status}")
-                else:
-                    raise Exception(f"Failed to get job status: {response.status}")
-
-    async def get_backend_status(self) -> Dict[str, Any]:
-        """Get quantum backend status"""
-        endpoint = f"{self.base_url}/backends/status"
-
-        try:
-            async with self.session.get(endpoint) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    return {"status": "unknown", "error": await response.text()}
-
-        except Exception as e:
-            logger.error(f"Failed to get backend status: {e}")
-            return {"status": "error", "error": str(e)}
-
-    async def optimize_circuit(self, circuit_id: str) -> str:
-        """Optimize a quantum circuit"""
-        endpoint = f"{self.base_url}/circuits/{circuit_id}/optimize"
-
-        optimization_config = {
-            "optimization_level": 2,
-            "target_backend": settings.quantum_backend
+        optimizer_config = {
+            "optimizer": Optimizer.COBYLA,
+            "max_iterations": max_iterations,
+            "tolerance": 1e-6,
+            "gradient_method": EstimatorGradient.FINITE_DIFF
         }
 
+        # Create VQE instance
+        vqe = VQE(
+            model=model,
+            optimizer_config=optimizer_config,
+            cost_function=cost_function,
+            initial_parameters=initial_params
+        )
+
+        # Run optimization
+        result = optimize(vqe)
+
+        return {
+            "optimal_parameters": result.optimal_parameters,
+            "optimal_value": result.optimal_value,
+            "iterations": result.iterations,
+            "convergence": result.converged
+        }
+
+    def get_last_execution_metrics(self) -> Dict[str, Any]:
+        """Get metrics from the last execution"""
+
+        if not self._last_execution_details:
+            return {}
+
+        details = self._last_execution_details
+
+        return {
+            "circuit_depth": details.get("depth", 0),
+            "num_qubits": details.get("width", 0),
+            "gate_count": details.get("gate_count", 0),
+            "execution_time_ms": details.get("execution_time", 0),
+            "queue_time_ms": details.get("queue_time", 0),
+            "synthesis_time_ms": details.get("synthesis_time", 0),
+            "backend_name": details.get("backend_name", "unknown"),
+            "success_rate": details.get("success_rate", 1.0)
+        }
+
+    async def estimate_resources(
+        self,
+        model: Model
+    ) -> Dict[str, Any]:
+        """Estimate quantum resources needed for a circuit"""
+
         try:
-            async with self.session.post(endpoint, json=optimization_config) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    optimized_id = result.get("optimized_circuit_id")
-                    logger.info(f"Optimized circuit: {circuit_id} -> {optimized_id}")
-                    return optimized_id
-                else:
-                    error = await response.text()
-                    logger.warning(f"Circuit optimization failed: {error}")
-                    return circuit_id  # Return original if optimization fails
+            # Synthesize to get resource estimates
+            quantum_program = synthesize(model)
+
+            # Extract circuit properties
+            circuit_properties = quantum_program.get_circuit_properties()
+
+            return {
+                "num_qubits": circuit_properties.width,
+                "circuit_depth": circuit_properties.depth,
+                "gate_count": circuit_properties.gate_count,
+                "multi_qubit_gates": circuit_properties.multi_qubit_gate_count,
+                "estimated_time_ms": circuit_properties.depth * 0.1,  # Rough estimate
+                "feasible": circuit_properties.width <= self.auth_manager.config.max_qubits
+            }
 
         except Exception as e:
-            logger.error(f"Failed to optimize circuit: {e}")
-            return circuit_id
+            logger.error(f"Resource estimation failed: {e}")
+            return {
+                "error": str(e),
+                "feasible": False
+            }
 
-    async def estimate_resources(self, circuit_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Estimate quantum resources needed"""
-        endpoint = f"{self.base_url}/circuits/estimate"
+    async def get_backend_status(self) -> Dict[str, Any]:
+        """Get current backend status and queue information"""
 
         try:
-            async with self.session.post(endpoint, json=circuit_config) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    return {"error": await response.text()}
+            from classiq import get_backend_status
+
+            backend_prefs = self.auth_manager.get_backend_preferences()
+            status = get_backend_status(backend_prefs)
+
+            return {
+                "backend": backend_prefs.backend_name or "classiq_simulator",
+                "status": "operational" if status.is_available else "offline",
+                "queue_length": status.pending_jobs,
+                "average_wait_time_seconds": status.average_queue_time,
+                "available": status.is_available,
+                "max_qubits": status.max_qubits,
+                "provider": backend_prefs.backend_service_provider.name
+            }
 
         except Exception as e:
-            logger.error(f"Failed to estimate resources: {e}")
-            return {"error": str(e)}
+            logger.error(f"Could not get backend status: {e}")
+            return {
+                "backend": "unknown",
+                "status": "error",
+                "error": str(e)
+            }

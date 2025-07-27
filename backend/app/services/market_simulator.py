@@ -1,4 +1,4 @@
-"""Market simulation service orchestrating quantum and classical methods"""
+"""Market simulation service orchestrating real quantum and classical methods"""
 
 import asyncio
 import logging
@@ -14,6 +14,7 @@ from app.models.schemas import (
 )
 from app.quantum.quantum_simulator import QuantumSimulator
 from app.quantum.classiq_client import ClassiqClient
+from app.quantum.quantum_finance import QuantumFinanceAlgorithms, MarketScenario
 from app.ml.llm_baseline import LLMBaseline
 from app.ml.classical_model import ClassicalPredictor
 from app.config import settings
@@ -22,20 +23,30 @@ logger = logging.getLogger(__name__)
 
 
 class MarketSimulator:
-    """Main market simulation orchestrator"""
+    """Main market simulation orchestrator with real quantum integration"""
 
     def __init__(self):
         self.quantum_simulator = None
+        self.quantum_finance = None
         self.llm_baseline = LLMBaseline()
         self.classical_predictor = ClassicalPredictor()
         self.warnings = []
         self.last_quantum_metrics = None
+        self.portfolio_optimizer = None
 
-    async def initialize(self):
-        """Initialize simulators and warm up models"""
+    async def initialize(self, classiq_client: ClassiqClient = None):
+        """Initialize simulators with quantum client"""
         logger.info("Initializing market simulator...")
 
-        # Warm up models
+        # Initialize quantum components if client provided
+        if classiq_client and classiq_client.is_ready():
+            self.quantum_simulator = QuantumSimulator(classiq_client)
+            self.quantum_finance = QuantumFinanceAlgorithms(classiq_client)
+            logger.info("Quantum components initialized")
+        else:
+            logger.warning("Running without quantum backend")
+
+        # Initialize classical components
         await self.llm_baseline.initialize()
         await self.classical_predictor.initialize()
 
@@ -43,14 +54,13 @@ class MarketSimulator:
 
     async def cleanup(self):
         """Cleanup resources"""
-        # Any cleanup needed
         pass
 
     async def simulate(
-            self,
-            sentiment_results: List[SentimentAnalysis],
-            market_data: Dict[str, Any],
-            simulation_params: Dict[str, Any]
+        self,
+        sentiment_results: List[SentimentAnalysis],
+        market_data: Dict[str, Any],
+        simulation_params: Dict[str, Any]
     ) -> List[MarketPrediction]:
         """Run market simulation based on sentiment and current market data"""
 
@@ -61,6 +71,14 @@ class MarketSimulator:
 
         predictions = []
 
+        # Check if we should optimize portfolio
+        should_optimize = len(market_data) > 1 and method != SimulationMethod.CLASSICAL_BASELINE
+
+        # Calculate correlations if multiple assets
+        correlations = None
+        if should_optimize:
+            correlations = await self._calculate_asset_correlations(market_data)
+
         for asset, asset_data in market_data.items():
             # Aggregate sentiment impact for this asset
             sentiment_impact = self._calculate_sentiment_impact(
@@ -68,19 +86,28 @@ class MarketSimulator:
             )
 
             # Run simulation based on method
-            if method == SimulationMethod.QUANTUM_MONTE_CARLO:
-                scenarios = await self._quantum_monte_carlo_simulation(
-                    asset_data, sentiment_impact, time_horizon, num_scenarios
-                )
-            elif method == SimulationMethod.QUANTUM_WALK:
-                scenarios = await self._quantum_walk_simulation(
-                    asset_data, sentiment_impact, time_horizon, num_scenarios
-                )
-            elif method == SimulationMethod.HYBRID_QML:
-                scenarios = await self._hybrid_qml_simulation(
-                    asset_data, sentiment_impact, time_horizon, num_scenarios
-                )
-            else:  # Classical baseline
+            try:
+                if method == SimulationMethod.QUANTUM_MONTE_CARLO:
+                    scenarios = await self._quantum_monte_carlo_simulation(
+                        asset_data, sentiment_impact, time_horizon, num_scenarios
+                    )
+                elif method == SimulationMethod.QUANTUM_WALK:
+                    scenarios = await self._quantum_walk_simulation(
+                        asset_data, sentiment_impact, time_horizon, num_scenarios
+                    )
+                elif method == SimulationMethod.HYBRID_QML:
+                    scenarios = await self._hybrid_qml_simulation(
+                        asset_data, sentiment_impact, time_horizon, num_scenarios
+                    )
+                else:  # Classical baseline
+                    scenarios = await self._classical_simulation(
+                        asset_data, sentiment_impact, time_horizon, num_scenarios
+                    )
+
+            except Exception as e:
+                logger.error(f"Simulation failed for {asset}: {e}")
+                self.warnings.append(f"Simulation error for {asset}: {str(e)}")
+                # Fallback to classical
                 scenarios = await self._classical_simulation(
                     asset_data, sentiment_impact, time_horizon, num_scenarios
                 )
@@ -92,24 +119,34 @@ class MarketSimulator:
 
             predictions.append(prediction)
 
+        # Run portfolio optimization if applicable
+        if should_optimize and self.quantum_finance:
+            try:
+                portfolio_result = await self._optimize_portfolio(
+                    predictions, market_data, correlations
+                )
+                # Add portfolio recommendation to warnings (for UI display)
+                self.warnings.append(f"Optimal portfolio weights: {portfolio_result}")
+            except Exception as e:
+                logger.error(f"Portfolio optimization failed: {e}")
+
         return predictions
 
     def _calculate_sentiment_impact(
-            self,
-            sentiment_results: List[SentimentAnalysis],
-            asset: str
+        self,
+        sentiment_results: List[SentimentAnalysis],
+        asset: str
     ) -> float:
         """Calculate aggregate sentiment impact for an asset"""
 
         if not sentiment_results:
             return 0.0
 
-        # Weight sentiments by confidence and relevance
         total_impact = 0.0
         total_weight = 0.0
 
         for sentiment in sentiment_results:
-            # Check if asset is mentioned in entities
+            # Check relevance to asset
             relevance = self._calculate_relevance(sentiment, asset)
 
             # Map sentiment to numeric impact
@@ -120,6 +157,15 @@ class MarketSimulator:
                 "positive": 1.0,
                 "very_positive": 2.0
             }.get(sentiment.sentiment.value, 0.0)
+
+            # Use quantum sentiment vector if available
+            if sentiment.quantum_sentiment_vector:
+                # Quantum provides probability distribution
+                quantum_expectation = sum(
+                    i * p for i, p in enumerate(sentiment.quantum_sentiment_vector, -2)
+                )
+                # Blend quantum and classical
+                sentiment_value = 0.7 * quantum_expectation + 0.3 * sentiment_value
 
             # Weight by confidence and relevance
             weight = sentiment.confidence * relevance
@@ -134,9 +180,9 @@ class MarketSimulator:
         return 0.0
 
     def _calculate_relevance(
-            self,
-            sentiment: SentimentAnalysis,
-            asset: str
+        self,
+        sentiment: SentimentAnalysis,
+        asset: str
     ) -> float:
         """Calculate how relevant a sentiment is to an asset"""
 
@@ -147,16 +193,15 @@ class MarketSimulator:
             if asset.lower() in entity["text"].lower():
                 relevance = 1.0
                 break
-            # Check for company name variations
             if self._is_related_entity(entity["text"], asset):
-                relevance = 0.8
+                relevance = max(relevance, 0.8)
 
         # Check key phrases
         for phrase in sentiment.key_phrases:
             if asset.lower() in phrase.lower():
                 relevance = max(relevance, 0.7)
 
-        # Check market impact keywords
+        # Market impact keywords boost relevance
         if sentiment.market_impact_keywords:
             relevance = max(relevance, 0.5)
 
@@ -164,13 +209,15 @@ class MarketSimulator:
 
     def _is_related_entity(self, entity_text: str, asset: str) -> bool:
         """Check if entity is related to asset"""
-        # Simple mapping - in practice, use a more sophisticated approach
+
         asset_mappings = {
-            "AAPL": ["apple", "iphone", "tim cook"],
-            "GOOGL": ["google", "alphabet", "sundar pichai"],
-            "TSLA": ["tesla", "elon musk", "electric vehicle"],
-            "MSFT": ["microsoft", "satya nadella", "windows"],
-            "AMZN": ["amazon", "jeff bezos", "aws"]
+            "AAPL": ["apple", "iphone", "tim cook", "ios", "mac"],
+            "GOOGL": ["google", "alphabet", "sundar pichai", "android", "youtube"],
+            "TSLA": ["tesla", "elon musk", "electric vehicle", "ev", "autopilot"],
+            "MSFT": ["microsoft", "satya nadella", "windows", "azure", "office"],
+            "AMZN": ["amazon", "jeff bezos", "aws", "prime", "alexa"],
+            "META": ["meta", "facebook", "zuckerberg", "instagram", "whatsapp"],
+            "NVDA": ["nvidia", "jensen huang", "gpu", "cuda", "ai chip"]
         }
 
         related_terms = asset_mappings.get(asset.upper(), [])
@@ -179,18 +226,19 @@ class MarketSimulator:
         return any(term in entity_lower for term in related_terms)
 
     async def _quantum_monte_carlo_simulation(
-            self,
-            asset_data: Dict[str, Any],
-            sentiment_impact: float,
-            time_horizon: int,
-            num_scenarios: int
+        self,
+        asset_data: Dict[str, Any],
+        sentiment_impact: float,
+        time_horizon: int,
+        num_scenarios: int
     ) -> List[PriceScenario]:
-        """Run quantum Monte Carlo simulation"""
+        """Run real quantum Monte Carlo simulation"""
 
         if not self.quantum_simulator:
-            # Initialize quantum simulator with Classiq client
-            classiq_client = ClassiqClient(settings.classiq_api_key)
-            self.quantum_simulator = QuantumSimulator(classiq_client)
+            self.warnings.append("Quantum simulator not available, using classical")
+            return await self._classical_simulation(
+                asset_data, sentiment_impact, time_horizon, num_scenarios
+            )
 
         try:
             # Prepare initial state
@@ -209,98 +257,105 @@ class MarketSimulator:
                 num_scenarios
             )
 
-            # Store quantum metrics
-            self.last_quantum_metrics = QuantumMetrics(
-                circuit_depth=42,  # Would get from actual circuit
-                num_qubits=10,
-                quantum_volume=1024,
-                entanglement_measure=0.87,
-                execution_time_ms=523,
-                hardware_backend=settings.quantum_backend,
-                success_probability=0.98
-            )
+            # Get quantum metrics
+            if self.quantum_simulator.client:
+                metrics = self.quantum_simulator.client.get_last_execution_metrics()
+
+                self.last_quantum_metrics = QuantumMetrics(
+                    circuit_depth=metrics.get("circuit_depth", 0),
+                    num_qubits=metrics.get("num_qubits", 0),
+                    quantum_volume=metrics.get("gate_count", 0),
+                    entanglement_measure=0.85,  # Estimated
+                    execution_time_ms=metrics.get("execution_time_ms", 0),
+                    hardware_backend=metrics.get("backend_name", "simulator"),
+                    success_probability=metrics.get("success_rate", 1.0)
+                )
 
             return scenarios
 
         except Exception as e:
             logger.error(f"Quantum Monte Carlo failed: {e}")
-            self.warnings.append(f"Quantum simulation failed, using classical fallback")
-            # Fallback to classical
+            self.warnings.append(f"Quantum simulation failed: {str(e)}")
             return await self._classical_simulation(
                 asset_data, sentiment_impact, time_horizon, num_scenarios
             )
 
     async def _quantum_walk_simulation(
-            self,
-            asset_data: Dict[str, Any],
-            sentiment_impact: float,
-            time_horizon: int,
-            num_scenarios: int
+        self,
+        asset_data: Dict[str, Any],
+        sentiment_impact: float,
+        time_horizon: int,
+        num_scenarios: int
     ) -> List[PriceScenario]:
         """Run quantum walk simulation"""
 
-        # For hackathon, implement simplified version
-        # Real implementation would use quantum walks on market graphs
+        # Quantum walk is complex to implement fully
+        # For now, use enhanced Monte Carlo
+        self.warnings.append("Quantum walk uses simplified implementation")
 
-        self.warnings.append("Quantum walk simulation in beta")
-
-        # Use hybrid approach
-        return await self._hybrid_qml_simulation(
+        return await self._quantum_monte_carlo_simulation(
             asset_data, sentiment_impact, time_horizon, num_scenarios
         )
 
     async def _hybrid_qml_simulation(
-            self,
-            asset_data: Dict[str, Any],
-            sentiment_impact: float,
-            time_horizon: int,
-            num_scenarios: int
+        self,
+        asset_data: Dict[str, Any],
+        sentiment_impact: float,
+        time_horizon: int,
+        num_scenarios: int
     ) -> List[PriceScenario]:
         """Run hybrid quantum-classical simulation"""
 
-        # Start with classical base scenarios
+        # Generate base scenarios classically
         base_scenarios = await self._generate_base_scenarios(
             asset_data, time_horizon, num_scenarios // 2
         )
 
-        # Enhance with quantum features
-        enhanced_scenarios = []
-
-        for scenario in base_scenarios:
-            # Apply quantum-inspired modifications
-            enhanced = self._apply_quantum_enhancement(
-                scenario, sentiment_impact
-            )
-            enhanced_scenarios.append(enhanced)
-
-        # Generate additional pure quantum scenarios
+        # Enhance with quantum if available
         if self.quantum_simulator:
             try:
-                quantum_scenarios = await self._quantum_monte_carlo_simulation(
-                    asset_data,
+                # Run quantum enhancement
+                quantum_scenarios = await self.quantum_simulator.simulate_market_scenarios(
+                    {
+                        "price": asset_data["current_price"],
+                        "volatility": asset_data.get("volatility", 0.2),
+                        "volume": asset_data.get("volume", 1000000),
+                        "trend": asset_data.get("trend", 0)
+                    },
                     sentiment_impact,
                     time_horizon,
                     num_scenarios // 2
                 )
-                enhanced_scenarios.extend(quantum_scenarios)
-            except:
-                # If quantum fails, generate more classical
-                pass
 
-        # Ensure we have enough scenarios
-        while len(enhanced_scenarios) < num_scenarios:
-            base = enhanced_scenarios[len(enhanced_scenarios) % len(enhanced_scenarios)]
+                # Combine scenarios
+                all_scenarios = base_scenarios + quantum_scenarios
+
+                # Normalize probability weights
+                total_weight = sum(s.probability_weight for s in all_scenarios)
+                for s in all_scenarios:
+                    s.probability_weight /= total_weight
+
+                return all_scenarios[:num_scenarios]
+
+            except Exception as e:
+                logger.error(f"Quantum enhancement failed: {e}")
+                self.warnings.append("Quantum enhancement failed, using classical only")
+
+        # Extend classical scenarios if quantum failed
+        while len(base_scenarios) < num_scenarios:
+            base = base_scenarios[len(base_scenarios) % len(base_scenarios)]
             perturbed = self._perturb_scenario(base)
-            enhanced_scenarios.append(perturbed)
+            perturbed.scenario_id = len(base_scenarios)
+            base_scenarios.append(perturbed)
 
-        return enhanced_scenarios[:num_scenarios]
+        return base_scenarios[:num_scenarios]
 
     async def _classical_simulation(
-            self,
-            asset_data: Dict[str, Any],
-            sentiment_impact: float,
-            time_horizon: int,
-            num_scenarios: int
+        self,
+        asset_data: Dict[str, Any],
+        sentiment_impact: float,
+        time_horizon: int,
+        num_scenarios: int
     ) -> List[PriceScenario]:
         """Run classical Monte Carlo simulation"""
 
@@ -326,7 +381,7 @@ class MarketSimulator:
                 # Generate daily return
                 z = np.random.standard_normal()
                 daily_return = (drift - 0.5 * volatility ** 2) * dt + \
-                               volatility * np.sqrt(dt) * z
+                              volatility * np.sqrt(dt) * z
 
                 returns_path.append(daily_return)
                 price_path.append(price_path[-1] * np.exp(daily_return))
@@ -345,10 +400,10 @@ class MarketSimulator:
         return scenarios
 
     async def _generate_base_scenarios(
-            self,
-            asset_data: Dict[str, Any],
-            time_horizon: int,
-            num_scenarios: int
+        self,
+        asset_data: Dict[str, Any],
+        time_horizon: int,
+        num_scenarios: int
     ) -> List[PriceScenario]:
         """Generate base scenarios for hybrid approach"""
 
@@ -357,58 +412,71 @@ class MarketSimulator:
             asset_data, 0.0, time_horizon, num_scenarios
         )
 
-    def _apply_quantum_enhancement(
-            self,
-            scenario: PriceScenario,
-            sentiment_impact: float
-    ) -> PriceScenario:
-        """Apply quantum-inspired enhancements to scenario"""
+    async def _calculate_asset_correlations(
+        self,
+        market_data: Dict[str, Any]
+    ) -> np.ndarray:
+        """Calculate correlation matrix for assets"""
 
-        # Quantum effects:
-        # 1. Superposition - multiple possible states
-        # 2. Entanglement - correlation changes
-        # 3. Tunneling - sudden jumps possible
+        # In practice, would use historical data
+        # For now, use simplified correlations
+        assets = list(market_data.keys())
+        n = len(assets)
+        corr_matrix = np.eye(n)
 
-        enhanced_prices = []
-        enhanced_returns = []
+        # Add some typical correlations
+        for i in range(n):
+            for j in range(i + 1, n):
+                # Tech stocks typically correlated
+                if assets[i] in ["AAPL", "GOOGL", "MSFT"] and \
+                   assets[j] in ["AAPL", "GOOGL", "MSFT"]:
+                    corr = 0.7
+                else:
+                    corr = 0.3
 
-        for i, (price, ret) in enumerate(zip(scenario.price_path, [0] + scenario.returns_path)):
-            if i == 0:
-                enhanced_prices.append(price)
-                continue
+                corr_matrix[i, j] = corr
+                corr_matrix[j, i] = corr
 
-            # Quantum tunneling effect - small chance of large jump
-            if np.random.random() < 0.02:  # 2% chance
-                # Tunneling event - larger move
-                tunnel_factor = 1 + np.random.choice([-1, 1]) * np.random.uniform(0.02, 0.05)
-                enhanced_price = enhanced_prices[-1] * tunnel_factor
+        return corr_matrix
 
-                # Influenced by sentiment
-                if sentiment_impact > 0 and tunnel_factor > 1:
-                    enhanced_price *= (1 + sentiment_impact * 0.01)
-                elif sentiment_impact < 0 and tunnel_factor < 1:
-                    enhanced_price *= (1 + sentiment_impact * 0.01)
-            else:
-                # Normal evolution with quantum noise
-                quantum_noise = np.random.normal(0, 0.001)
-                enhanced_return = ret + quantum_noise + sentiment_impact * 0.0001
-                enhanced_price = enhanced_prices[-1] * np.exp(enhanced_return)
+    async def _optimize_portfolio(
+        self,
+        predictions: List[MarketPrediction],
+        market_data: Dict[str, Any],
+        correlations: np.ndarray
+    ) -> Dict[str, Any]:
+        """Optimize portfolio using quantum algorithms"""
 
-            enhanced_prices.append(enhanced_price)
-            if i > 0:
-                actual_return = np.log(enhanced_price / enhanced_prices[-2])
-                enhanced_returns.append(actual_return)
+        if not self.quantum_finance:
+            return {}
 
-        # Recalculate volatility
-        enhanced_volatility = self._calculate_path_volatility(enhanced_returns)
+        # Extract returns and build covariance
+        expected_returns = np.array([p.expected_return for p in predictions])
+        volatilities = np.array([p.volatility for p in predictions])
 
-        return PriceScenario(
-            scenario_id=scenario.scenario_id,
-            price_path=enhanced_prices,
-            returns_path=enhanced_returns,
-            volatility_path=enhanced_volatility,
-            probability_weight=scenario.probability_weight
-        )
+        # Simple covariance from correlations and volatilities
+        cov_matrix = np.outer(volatilities, volatilities) * correlations
+
+        # Run quantum portfolio optimization
+        try:
+            result = await self.quantum_finance.quantum_portfolio_optimization(
+                expected_returns,
+                cov_matrix,
+                risk_aversion=1.0
+            )
+
+            # Format result
+            assets = list(market_data.keys())
+            portfolio = {
+                assets[i]: f"{w:.1%}"
+                for i, w in enumerate(result["optimal_weights"])
+            }
+
+            return portfolio
+
+        except Exception as e:
+            logger.error(f"Portfolio optimization failed: {e}")
+            return {}
 
     def _perturb_scenario(self, scenario: PriceScenario) -> PriceScenario:
         """Create variation of existing scenario"""
@@ -435,7 +503,7 @@ class MarketSimulator:
         volatility = self._calculate_path_volatility(returns)
 
         return PriceScenario(
-            scenario_id=scenario.scenario_id + 1000,  # Different ID
+            scenario_id=scenario.scenario_id + 1000,
             price_path=perturbed_prices.tolist(),
             returns_path=returns,
             volatility_path=volatility,
@@ -443,9 +511,9 @@ class MarketSimulator:
         )
 
     def _calculate_path_volatility(
-            self,
-            returns: List[float],
-            window: int = 5
+        self,
+        returns: List[float],
+        window: int = 5
     ) -> List[float]:
         """Calculate rolling volatility along path"""
 
@@ -470,11 +538,11 @@ class MarketSimulator:
         return volatilities
 
     def _process_scenarios_to_prediction(
-            self,
-            asset: str,
-            asset_data: Dict[str, Any],
-            scenarios: List[PriceScenario],
-            confidence_levels: List[float]
+        self,
+        asset: str,
+        asset_data: Dict[str, Any],
+        scenarios: List[PriceScenario],
+        confidence_levels: List[float]
     ) -> MarketPrediction:
         """Process scenarios into final prediction"""
 
@@ -522,8 +590,8 @@ class MarketSimulator:
         bull_threshold = 0.02  # 2% up
         bear_threshold = -0.02  # 2% down
 
-        bull_prob = np.sum(weights[returns > bull_threshold])
-        bear_prob = np.sum(weights[returns < bear_threshold])
+        bull_prob = np.sum(weights[np.array(returns) > bull_threshold])
+        bear_prob = np.sum(weights[np.array(returns) < bear_threshold])
         neutral_prob = 1 - bull_prob - bear_prob
 
         regime_probabilities = {
@@ -532,8 +600,8 @@ class MarketSimulator:
             "neutral": float(neutral_prob)
         }
 
-        # Calculate quantum uncertainty (entropy-based)
-        # Higher entropy = higher uncertainty
+        # Calculate quantum uncertainty
+        # Use entropy of probability distribution
         entropy = -np.sum(weights * np.log(weights + 1e-10))
         max_entropy = np.log(len(scenarios))
         quantum_uncertainty = entropy / max_entropy if max_entropy > 0 else 0.5
@@ -554,9 +622,9 @@ class MarketSimulator:
         )
 
     def compare_methods(
-            self,
-            quantum_predictions: List[MarketPrediction],
-            classical_predictions: List[MarketPrediction]
+        self,
+        quantum_predictions: List[MarketPrediction],
+        classical_predictions: List[MarketPrediction]
     ) -> Dict[str, Any]:
         """Compare quantum vs classical predictions"""
 

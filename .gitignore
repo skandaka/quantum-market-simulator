@@ -9,6 +9,7 @@ frontend/node_modules/
 frontend/.DS_Store
 frontend/dist/
 frontend/.env
+frontend/package-lock.json
 
 # IDE / OS files
 .vscode/
