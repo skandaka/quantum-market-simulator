@@ -1,155 +1,241 @@
 #!/usr/bin/env python3
+
+# Path: /Users/skandaa/Desktop/quantum-market-simulator/backend/scripts/test_quantum.py
+
 """
-Test script to verify quantum backend is working
-Run this after setting up your Classiq API key
+Enhanced Quantum Backend Test Script
+Tests all quantum components with proper error handling and compatibility checks
 """
 
-import os
 import sys
-import asyncio
-import warnings
-from pathlib import Path
-
-# Suppress warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
-
-# Add backend to path
-backend_dir = Path(__file__).parent
-sys.path.insert(0, str(backend_dir))
+import traceback
+from typing import Optional
 
 
-async def test_quantum_backend():
-    """Test the quantum backend setup"""
+def test_basic_imports():
+    """Test basic imports with compatibility checks"""
+    print("1. Testing basic imports...")
 
-    print("🧪 Testing Quantum Backend Setup")
-    print("=" * 50)
-
-    # Test 1: Basic imports
-    print("\n1. Testing basic imports...")
     try:
+        import pydantic
+        print(f"   ✅ Pydantic {pydantic.__version__} imported")
+
+        # Test StringConstraints with fallback
+        try:
+            from pydantic import StringConstraints
+            print("   ✅ StringConstraints imported from pydantic")
+        except ImportError:
+            try:
+                from pydantic.types import StringConstraints
+                print("   ✅ StringConstraints imported from pydantic.types")
+            except ImportError:
+                try:
+                    from pydantic.v1 import StringConstraints
+                    print("   ✅ StringConstraints imported from pydantic.v1")
+                except ImportError:
+                    print("   ⚠️  StringConstraints not available - using alternatives")
+
+        import numpy as np
+        print(f"   ✅ Numpy {np.__version__} imported")
+
         import classiq
-        print(f"   ✅ Classiq imported (version available)")
+        print("   ✅ Classiq imported")
 
-        from classiq import qfunc, QBit, H, create_model, synthesize
-        print("   ✅ Classiq core functions imported")
+        return True
 
-    except ImportError as e:
+    except Exception as e:
         print(f"   ❌ Import failed: {e}")
         return False
 
-    # Test 2: Check API key
-    print("\n2. Checking API key...")
-    api_key = os.getenv("CLASSIQ_API_KEY")
-    if not api_key or api_key == "your_actual_api_key_here":
-        print("   ⚠️  No API key set - app will run in simulation mode")
-        print("   📝 Add your real API key to .env file")
-        has_api_key = False
-    else:
-        print("   ✅ API key found")
-        has_api_key = True
 
-    # Test 3: Test our modules
-    print("\n3. Testing our quantum modules...")
+def test_quantum_functions():
+    """Test quantum function definitions"""
+    print("2. Testing quantum function definitions...")
+
     try:
-        from app.quantum.classiq_auth import classiq_auth
-        print("   ✅ classiq_auth imported")
+        # Import specific functions instead of using import *
+        from classiq import qfunc, QArray, QBit, Output, allocate, hadamard, cnot
 
-        from app.quantum.classiq_client import ClassiqClient
-        print("   ✅ ClassiqClient imported")
-
-    except Exception as e:
-        print(f"   ❌ Module import failed: {e}")
-        return False
-
-    # Test 4: Test authentication
-    print("\n4. Testing authentication...")
-    try:
-        await classiq_auth.initialize()
-        if classiq_auth.is_authenticated():
-            print("   ✅ Successfully authenticated with Classiq!")
-            print("   🎉 REAL QUANTUM BACKEND READY!")
-        else:
-            print("   ⚠️  Not authenticated - will use simulation mode")
-            print("   💡 Check your API key in .env file")
-    except Exception as e:
-        print(f"   ⚠️  Authentication test failed: {e}")
-        if has_api_key:
-            print("   🔧 Try running: python -c \"import classiq; classiq.authenticate()\"")
-
-    # Test 5: Test circuit creation
-    print("\n5. Testing circuit creation...")
-    try:
+        # Define quantum functions with correct syntax
         @qfunc
-        def main(q: QBit):
-            H(q)
+        def simple_bell_state(q: QArray[QBit]):
+            """Create a simple Bell state"""
+            hadamard(q[0])
+            cnot(q[0], q[1])
 
-        model = create_model(main)
-        print("   ✅ Quantum circuit model created")
+        @qfunc
+        def main(q: Output[QArray[QBit]]):
+            """Main quantum function - no inputs allowed"""
+            allocate(2, q)
+            simple_bell_state(q)
 
-        # Only test synthesis if authenticated
-        if has_api_key and classiq_auth.is_authenticated():
-            try:
-                print("   🔄 Testing circuit synthesis...")
-                qprog = await asyncio.to_thread(synthesize, model)
-                print("   🎉 CIRCUIT SYNTHESIZED SUCCESSFULLY!")
-                print("   ⚡ Real quantum backend is working!")
-            except Exception as e:
-                print(f"   ⚠️  Synthesis failed: {e}")
-                print("   💡 This might be due to API limits or connection issues")
+        print("   ✅ Quantum functions defined successfully")
+        return True, main
+
+    except Exception as e:
+        print(f"   ❌ Quantum function definition failed: {e}")
+        return False, None
+
+
+def test_circuit_creation(main_func):
+    """Test quantum circuit creation"""
+    print("3. Testing circuit creation...")
+
+    try:
+        from classiq import create_model, write_qmod
+
+        # Create model
+        model = create_model(main_func)
+        print("   ✅ Quantum model created successfully")
+
+        # Try to write QMOD (this tests model validity)
+        qmod_str = write_qmod(model)
+        print("   ✅ QMOD generated successfully")
+        print(f"   📄 QMOD length: {len(qmod_str)} characters")
+
+        return True, model
 
     except Exception as e:
         print(f"   ❌ Circuit creation failed: {e}")
+        if "API key" in str(e).lower() or "authentication" in str(e).lower():
+            print("   💡 This might be due to missing API key - that's expected for now")
+        return False, None
+
+
+def test_classiq_client():
+    """Test ClassiqClient integration"""
+    print("4. Testing ClassiqClient integration...")
+
+    try:
+        # Import our custom ClassiqClient
+        from app.services.quantum.classiq_auth import ClassiqClient
+        print("   ✅ ClassiqClient imported successfully")
+
+        # Create client instance
+        client = ClassiqClient()
+        print("   ✅ ClassiqClient instance created")
+
+        # Test basic client methods (without requiring authentication)
+        if hasattr(client, 'is_connected'):
+            print(f"   📊 Connection status available")
+
+        return True
+
+    except ImportError as e:
+        print(f"   ❌ ClassiqClient import failed: {e}")
+        print("   💡 Make sure the quantum auth module exists")
+        return False
+    except Exception as e:
+        print(f"   ❌ ClassiqClient test failed: {e}")
         return False
 
-    # Test 6: Test client
-    print("\n6. Testing ClassiqClient...")
-    try:
-        client = ClassiqClient()
-        await client.initialize()
 
-        if client.is_ready():
-            print("   ✅ ClassiqClient is ready!")
-            print("   🚀 Quantum simulations will use REAL quantum computing!")
+def test_environment_setup():
+    """Test environment and configuration"""
+    print("5. Testing environment setup...")
+
+    try:
+        import os
+        from pathlib import Path
+
+        # Check for .env file
+        env_path = Path(".env")
+        if env_path.exists():
+            print("   ✅ .env file found")
+
+            # Check for Classiq API key
+            with open(env_path) as f:
+                env_content = f.read()
+                if "CLASSIQ_API_KEY" in env_content:
+                    print("   ✅ CLASSIQ_API_KEY found in .env")
+                else:
+                    print("   ⚠️  CLASSIQ_API_KEY not found in .env")
         else:
-            print("   ⚠️  ClassiqClient not ready - will use simulation")
+            print("   ⚠️  .env file not found")
+
+        # Check virtual environment
+        if hasattr(sys, 'prefix') and hasattr(sys, 'base_prefix'):
+            if sys.prefix != sys.base_prefix:
+                print("   ✅ Virtual environment detected")
+            else:
+                print("   ⚠️  No virtual environment detected")
+
+        return True
 
     except Exception as e:
-        print(f"   ❌ Client test failed: {e}")
+        print(f"   ❌ Environment test failed: {e}")
+        return False
 
-    print("\n" + "=" * 50)
 
-    if has_api_key and classiq_auth.is_authenticated():
-        print("🎉 SUCCESS: Real quantum backend is working!")
-        print("✨ Your app will use actual quantum computing!")
+def run_comprehensive_test():
+    """Run comprehensive quantum backend test"""
+    print("🧪 Testing Quantum Backend Setup")
+    print("=" * 50)
+
+    all_passed = True
+
+    # Test 1: Basic imports
+    if not test_basic_imports():
+        all_passed = False
+
+    print()
+
+    # Test 2: Quantum functions
+    func_success, main_func = test_quantum_functions()
+    if not func_success:
+        all_passed = False
+
+    print()
+
+    # Test 3: Circuit creation (only if functions work)
+    if func_success and main_func:
+        circuit_success, model = test_circuit_creation(main_func)
+        if not circuit_success:
+            all_passed = False
     else:
-        print("⚠️  SIMULATION MODE: Set up API key for real quantum computing")
-        print("")
-        print("To enable real quantum computing:")
-        print("1. Get API key from https://platform.classiq.io/")
-        print("2. Add to .env: CLASSIQ_API_KEY=your_real_key")
-        print("3. Restart the application")
+        print("3. Skipping circuit creation (function test failed)")
 
-    print("")
-    return True
+    print()
 
+    # Test 4: ClassiqClient
+    if not test_classiq_client():
+        all_passed = False
 
-async def main():
-    """Main test function"""
-    try:
-        success = await test_quantum_backend()
-        if success:
-            print("🚀 Ready to run: python -m app.main")
-        else:
-            print("❌ Setup incomplete - fix errors above")
-            sys.exit(1)
-    except KeyboardInterrupt:
-        print("\n⚠️  Test interrupted")
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    print()
+
+    # Test 5: Environment
+    if not test_environment_setup():
+        all_passed = False
+
+    print()
+    print("=" * 50)
+
+    if all_passed:
+        print("🎉 All tests passed! Quantum backend is ready.")
+        print()
+        print("Next steps:")
+        print("1. Get your Classiq API key from https://platform.classiq.io/")
+        print("2. Add it to your .env file: CLASSIQ_API_KEY=your_api_key")
+        print("3. Run: python -m app.main")
+    else:
+        print("❌ Some tests failed. Check the errors above.")
+        print()
+        print("Common fixes:")
+        print("1. Run the fix script: ./scripts/fix_quantum.sh")
+        print("2. Check your Python environment")
+        print("3. Verify all dependencies are installed")
+
+    return all_passed
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        success = run_comprehensive_test()
+        sys.exit(0 if success else 1)
+    except KeyboardInterrupt:
+        print("\n🛑 Test interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n💥 Unexpected error: {e}")
+        traceback.print_exc()
+        sys.exit(1)

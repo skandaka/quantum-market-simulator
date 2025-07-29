@@ -1,63 +1,47 @@
-# Fixed requirements.txt with Classiq-compatible versions
+# Path: /Users/skandaa/Desktop/quantum-market-simulator/backend/requirements.txt
 
-# Core FastAPI stack with Classiq-compatible pydantic
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.3              # Specific version compatible with Classiq
-pydantic-core==2.14.6        # Compatible core version
-pydantic-settings==2.1.0     # Compatible settings version
-python-multipart==0.0.6
-python-dotenv==1.0.0
+# Core Python packages
+numpy>=1.26.0,<2.0.0
+scipy>=1.11.0,<2.0.0
 
-# WebSocket support
-websockets==12.0
-python-socketio==5.10.0
+# Pydantic with compatible versions
+pydantic>=2.8.0,<2.10.0
+pydantic-core>=2.20.0,<2.24.0
+pydantic-settings>=2.4.0,<3.0.0
 
-# Quantum Computing - Classiq (install after pydantic fix)
-classiq                       # Will be installed by the fix script
-qiskit==0.45.0
-qiskit-terra==0.45.0
-qiskit-finance==0.4.0
+# Quantum computing
+classiq>=0.87.0
 
-# Data processing - Compatible versions
-numpy==1.26.2
-pandas==2.1.4
-scipy==1.11.4
+# Web framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
 
-# Machine Learning - Stable versions
-torch>=2.2.0
-transformers==4.35.2
-scikit-learn==1.3.2
-joblib==1.3.2
-openai
+# HTTP client
+httpx>=0.24.0
+requests>=2.31.0
 
-# NLP - Working versions
-spacy==3.7.2
-textblob==0.17.1
-lxml_html_clean
+# Environment and configuration
+python-dotenv>=1.0.0
 
-# Market Data APIs
-yfinance==0.2.33
-alpha-vantage==2.3.1
-tweepy==4.14.0
+# Data processing
+pandas>=2.0.0
+matplotlib>=3.7.0
+plotly>=5.15.0
 
-# Networking and web
-aiohttp==3.9.1
-requests==2.31.0
-feedparser==6.0.10
-beautifulsoup4==4.12.2
-lxml==4.9.3
+# Async support
+asyncio-mqtt>=0.11.0
 
-# Caching and storage
-redis==5.0.1
-aioredis==2.0.1
+# Logging and monitoring
+structlog>=23.0.0
 
 # Development and testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
-black==23.11.0
-flake8==6.1.0
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+isort>=5.12.0
 
-# System compatibility
-setuptools>=65.5.0
+# Optional: Machine learning (with compatible numpy)
+# scikit-learn>=1.3.0
+
+# Note: Avoiding thinc/spacy to prevent numpy conflicts
+# If needed, install them separately with: pip install "thinc>=8.2.0" --no-deps
