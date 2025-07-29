@@ -1,300 +1,155 @@
-# Path: /Users/skandaa/Desktop/quantum-market-simulator/backend/app/services/quantum/classiq_auth.py
-
 """
-Classiq Authentication and Client Management
-Handles Classiq API authentication with improved error handling and compatibility
+Classiq Authentication and Configuration Manager
+Handles all Classiq-related authentication and configuration
 """
 
 import os
+import asyncio
 import logging
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any
+from dataclasses import dataclass
 from pathlib import Path
-
-# Handle pydantic imports with compatibility
-try:
-    from pydantic import BaseModel, Field
-    # Try different import paths for StringConstraints
-    try:
-        from pydantic import StringConstraints
-    except ImportError:
-        try:
-            from pydantic.types import StringConstraints
-        except ImportError:
-            try:
-                from pydantic.v1 import StringConstraints
-            except ImportError:
-                # Fallback: create a simple constraint type
-                StringConstraints = str
-                logging.warning("StringConstraints not available, using str fallback")
-except ImportError as e:
-    logging.error(f"Failed to import pydantic: {e}")
-    raise ImportError("Pydantic is required but not properly installed")
-
-# Classiq imports with error handling
-try:
-    import classiq
-    from classiq import authenticate, set_credentials
-    CLASSIQ_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"Classiq not available: {e}")
-    CLASSIQ_AVAILABLE = False
-    # Create mock functions for development
-    def authenticate(*args, **kwargs):
-        raise RuntimeError("Classiq not installed")
-    
-    def set_credentials(*args, **kwargs):
-        raise RuntimeError("Classiq not installed")
 
 logger = logging.getLogger(__name__)
 
-class ClassiqConfig(BaseModel):
-    """Configuration for Classiq client with flexible string constraints"""
-    
-    # Use conditional field definition based on StringConstraints availability
-    if StringConstraints != str:
-        api_key: Optional[str] = Field(
-            default=None,
-            description="Classiq API key for authentication"
-        )
-    else:
-        api_key: Optional[str] = Field(
-            default=None,
-            description="Classiq API key for authentication"
-        )
-    
-    api_base_url: str = Field(
-        default="https://platform.classiq.io",
-        description="Base URL for Classiq API"
-    )
-    
-    timeout: int = Field(
-        default=30,
-        description="Request timeout in seconds"
-    )
-    
-    max_retries: int = Field(
-        default=3,
-        description="Maximum number of retry attempts"
-    )
+# Check Classiq availability
+try:
+    import classiq
+    from classiq import authenticate, set_credentials
 
-class ClassiqClient:
-    """
-    Enhanced Classiq client with improved error handling and authentication management
-    """
-    
-    def __init__(self, config: Optional[ClassiqConfig] = None):
-        """
-        Initialize Classiq client
-        
-        Args:
-            config: Optional configuration. If None, loads from environment
-        """
-        self.config = config or self._load_config()
+    CLASSIQ_AVAILABLE = True
+    logger.info(f"Classiq version {getattr(classiq, '__version__', 'unknown')} available")
+except ImportError as e:
+    logger.warning(f"Classiq not available: {e}")
+    CLASSIQ_AVAILABLE = False
+
+
+    # Mock functions for development
+    def authenticate():
+        raise RuntimeError("Classiq not installed")
+
+
+    def set_credentials(**kwargs):
+        raise RuntimeError("Classiq not installed")
+
+
+@dataclass
+class ClassiqConfig:
+    """Configuration for Classiq quantum backend"""
+    api_key: Optional[str] = None
+    backend_provider: str = "IBM"
+    max_qubits: int = 10
+    optimization_level: int = 2
+    shots: int = 1024
+    use_hardware: bool = False
+    timeout: int = 300  # 5 minutes
+
+
+class ClassiqAuthManager:
+    """Manages Classiq authentication and configuration"""
+
+    def __init__(self):
+        self.config = ClassiqConfig()
         self._authenticated = False
-        self._client = None
+        self._initialized = False
         self._last_error: Optional[str] = None
-        
-        # Initialize client if Classiq is available
-        if CLASSIQ_AVAILABLE:
-            self._initialize_client()
-        else:
+        self._load_config()
+
+    def _load_config(self):
+        """Load configuration from environment"""
+        # Load API key
+        self.config.api_key = os.getenv("CLASSIQ_API_KEY")
+
+        # Load other settings
+        self.config.backend_provider = os.getenv("CLASSIQ_BACKEND_PROVIDER", "IBM")
+        self.config.max_qubits = int(os.getenv("CLASSIQ_MAX_QUBITS", "10"))
+        self.config.optimization_level = int(os.getenv("CLASSIQ_OPTIMIZATION_LEVEL", "2"))
+        self.config.shots = int(os.getenv("CLASSIQ_SHOTS", "1024"))
+        self.config.use_hardware = os.getenv("CLASSIQ_USE_HARDWARE", "false").lower() == "true"
+
+        logger.info(f"Loaded Classiq config: provider={self.config.backend_provider}, "
+                    f"qubits={self.config.max_qubits}, hardware={self.config.use_hardware}")
+
+    async def initialize(self):
+        """Initialize Classiq authentication"""
+        if self._initialized:
+            return
+
+        if not CLASSIQ_AVAILABLE:
             logger.warning("Classiq not available - running in simulation mode")
-    
-    def _load_config(self) -> ClassiqConfig:
-        """Load configuration from environment variables and .env file"""
-        
-        # Try to load .env file
-        env_path = Path(".env")
-        env_vars = {}
-        
-        if env_path.exists():
-            try:
-                with open(env_path, 'r') as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#') and '=' in line:
-                            key, value = line.split('=', 1)
-                            env_vars[key.strip()] = value.strip().strip('"\'')
-            except Exception as e:
-                logger.warning(f"Could not read .env file: {e}")
-        
-        # Get API key from environment or .env file
-        api_key = os.getenv('CLASSIQ_API_KEY') or env_vars.get('CLASSIQ_API_KEY')
-        
-        return ClassiqConfig(
-            api_key=api_key,
-            api_base_url=os.getenv('CLASSIQ_API_BASE_URL', 'https://platform.classiq.io'),
-            timeout=int(os.getenv('CLASSIQ_TIMEOUT', '30')),
-            max_retries=int(os.getenv('CLASSIQ_MAX_RETRIES', '3'))
-        )
-    
-    def _initialize_client(self):
-        """Initialize the Classiq client with authentication"""
+            self._initialized = True
+            return
+
         try:
-            if self.config.api_key:
+            if self.config.api_key and self.config.api_key != "your_actual_api_key_here":
                 # Use API key authentication
+                logger.info("Authenticating with Classiq using API key...")
                 set_credentials(api_key=self.config.api_key)
                 self._authenticated = True
-                logger.info("✅ Classiq client initialized with API key")
+                logger.info("✅ Classiq authentication successful")
             else:
-                logger.warning("⚠️ No API key provided - some features may be limited")
+                logger.warning("No valid API key found - quantum features limited")
                 self._authenticated = False
-                
+
+            self._initialized = True
+
         except Exception as e:
             self._last_error = str(e)
-            logger.error(f"❌ Failed to initialize Classiq client: {e}")
+            logger.error(f"Classiq authentication failed: {e}")
             self._authenticated = False
-    
-    def authenticate_browser(self) -> bool:
-        """
-        Authenticate using browser-based flow
-        
-        Returns:
-            bool: True if authentication successful
-        """
-        if not CLASSIQ_AVAILABLE:
-            logger.error("Classiq not available for authentication")
-            return False
-            
-        try:
-            authenticate()
-            self._authenticated = True
-            logger.info("✅ Browser authentication successful")
-            return True
-        except Exception as e:
-            self._last_error = str(e)
-            logger.error(f"❌ Browser authentication failed: {e}")
-            return False
-    
-    def is_connected(self) -> bool:
-        """
-        Check if client is properly connected and authenticated
-        
-        Returns:
-            bool: True if connected and authenticated
-        """
-        if not CLASSIQ_AVAILABLE:
-            return False
-            
-        return self._authenticated
-    
+            self._initialized = True
+
+    def is_authenticated(self) -> bool:
+        """Check if authenticated with Classiq"""
+        return CLASSIQ_AVAILABLE and self._authenticated
+
+    def update_config(self, **kwargs):
+        """Update configuration dynamically"""
+        for key, value in kwargs.items():
+            if hasattr(self.config, key):
+                setattr(self.config, key, value)
+                logger.info(f"Updated Classiq config: {key}={value}")
+
+    def get_backend_preferences(self) -> Dict[str, Any]:
+        """Get backend preferences for Classiq"""
+        return {
+            "backend_provider": self.config.backend_provider,
+            "use_hardware": self.config.use_hardware,
+            "max_qubits": self.config.max_qubits,
+            "optimization_level": self.config.optimization_level
+        }
+
+    def get_execution_preferences(self) -> Dict[str, Any]:
+        """Get execution preferences"""
+        return {
+            "num_shots": self.config.shots,
+            "backend_preferences": self.get_backend_preferences()
+        }
+
+    def get_resource_limits(self) -> Dict[str, Any]:
+        """Get resource limits based on configuration"""
+        return {
+            "max_qubits": self.config.max_qubits,
+            "max_circuit_depth": 1000,
+            "max_gates": 10000,
+            "timeout_seconds": self.config.timeout
+        }
+
     def get_status(self) -> Dict[str, Any]:
-        """
-        Get detailed status information
-        
-        Returns:
-            Dict with status information
-        """
+        """Get current status"""
         return {
             "classiq_available": CLASSIQ_AVAILABLE,
             "authenticated": self._authenticated,
-            "api_key_configured": bool(self.config.api_key),
+            "initialized": self._initialized,
             "last_error": self._last_error,
             "config": {
-                "api_base_url": self.config.api_base_url,
-                "timeout": self.config.timeout,
-                "max_retries": self.config.max_retries
+                "backend_provider": self.config.backend_provider,
+                "max_qubits": self.config.max_qubits,
+                "use_hardware": self.config.use_hardware,
+                "optimization_level": self.config.optimization_level
             }
         }
-    
-    def test_connection(self) -> Dict[str, Any]:
-        """
-        Test the connection to Classiq services
-        
-        Returns:
-            Dict with test results
-        """
-        results = {
-            "success": False,
-            "tests": {},
-            "errors": []
-        }
-        
-        if not CLASSIQ_AVAILABLE:
-            results["errors"].append("Classiq library not available")
-            return results
-        
-        # Test 1: Basic import
-        try:
-            import classiq
-            results["tests"]["import"] = True
-        except Exception as e:
-            results["tests"]["import"] = False
-            results["errors"].append(f"Import failed: {e}")
-        
-        # Test 2: Authentication status
-        results["tests"]["authenticated"] = self._authenticated
-        if not self._authenticated and not self.config.api_key:
-            results["errors"].append("No API key configured")
-        
-        # Test 3: Basic quantum function (if authenticated)
-        if self._authenticated:
-            try:
-                from classiq import qfunc, QArray, QBit, Output, allocate, hadamard
-                
-                @qfunc
-                def test_func(q: Output[QArray[QBit]]):
-                    allocate(1, q)
-                    hadamard(q[0])
-                
-                results["tests"]["quantum_function"] = True
-            except Exception as e:
-                results["tests"]["quantum_function"] = False
-                results["errors"].append(f"Quantum function test failed: {e}")
-        
-        results["success"] = all(results["tests"].values()) and len(results["errors"]) == 0
-        return results
-    
-    def get_client_info(self) -> Dict[str, Any]:
-        """
-        Get information about the Classiq client and environment
-        
-        Returns:
-            Dict with client information
-        """
-        info = {
-            "classiq_available": CLASSIQ_AVAILABLE,
-            "client_initialized": self._client is not None,
-            "authenticated": self._authenticated
-        }
-        
-        if CLASSIQ_AVAILABLE:
-            try:
-                import classiq
-                info["classiq_version"] = getattr(classiq, '__version__', 'unknown')
-            except:
-                info["classiq_version"] = 'unknown'
-        
-        return info
 
-# Global client instance
-_global_client: Optional[ClassiqClient] = None
 
-def get_quantum_client() -> ClassiqClient:
-    """
-    Get or create global ClassiqClient instance
-    
-    Returns:
-        ClassiqClient: Global client instance
-    """
-    global _global_client
-    if _global_client is None:
-        _global_client = ClassiqClient()
-    return _global_client
-
-def reset_quantum_client():
-    """Reset the global client instance"""
-    global _global_client
-    _global_client = None
-
-# Convenience functions
-def is_quantum_available() -> bool:
-    """Check if quantum computing is available"""
-    return get_quantum_client().is_connected()
-
-def get_quantum_status() -> Dict[str, Any]:
-    """Get quantum backend status"""
-    return get_quantum_client().get_status()
-
-# For backward compatibility
-ClassiqAuthenticator = ClassiqClient
+# Global instance
+classiq_auth = ClassiqAuthManager()
