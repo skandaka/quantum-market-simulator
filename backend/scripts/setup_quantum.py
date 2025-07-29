@@ -13,7 +13,12 @@ sys.path.insert(0, str(backend_dir))
 
 from app.quantum.classiq_auth import classiq_auth
 from app.quantum.classiq_client import ClassiqClient
-from classiq import show_available_backends, authenticate
+
+try:
+    from classiq import authenticate
+    CLASSIQ_AVAILABLE = True
+except ImportError:
+    CLASSIQ_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,6 +30,13 @@ async def setup_quantum():
     print("\n" + "=" * 60)
     print("🚀 Quantum Market Simulator - Classiq Setup")
     print("=" * 60 + "\n")
+
+    if not CLASSIQ_AVAILABLE:
+        print("❌ Classiq is not installed!")
+        print("\nTo install Classiq, run:")
+        print("  pip install classiq")
+        print("\nOr update your requirements.txt to include 'classiq'")
+        return False
 
     # Check for existing API key
     api_key = os.getenv("CLASSIQ_API_KEY")
@@ -72,15 +84,6 @@ async def setup_quantum():
 
         if classiq_auth.is_authenticated():
             print("✅ Successfully connected to Classiq!")
-
-            # Show available backends
-            print("\n📊 Available Quantum Backends:")
-            try:
-                backends = show_available_backends()
-                for backend in backends:
-                    print(f"  - {backend}")
-            except:
-                print("  (Could not fetch backend list)")
 
             # Test quantum client
             print("\n🧪 Testing quantum circuit synthesis...")
@@ -136,10 +139,14 @@ async def test_quantum_circuit():
 
     print("\n🔬 Running quantum circuit test...")
 
-    try:
-        from classiq import create_model, QFunc, QBit, H, synthesize, execute, Output
+    if not CLASSIQ_AVAILABLE:
+        print("❌ Classiq not available")
+        return False
 
-        @QFunc
+    try:
+        from classiq import create_model, qfunc, QBit, H, synthesize, CX, Output
+
+        @qfunc
         def bell_pair(q0: QBit, q1: QBit):
             H(q0)
             CX(q0, q1)
@@ -187,4 +194,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main()
+    asyncio.run(main())

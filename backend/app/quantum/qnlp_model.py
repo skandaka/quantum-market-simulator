@@ -6,11 +6,17 @@ from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 import asyncio
 
-from classiq import (
-    QFunc, QBit, QArray, Output, allocate, apply_to_all,
-    H, RY, RZ, CX, X, Z, control, within_apply,
-    create_model, synthesize, execute
-)
+try:
+    from classiq import (
+        qfunc, QBit, QArray, Output, allocate,
+        H, RY, RZ, CX, X, Z, control,
+        create_model, synthesize, execute
+    )
+    CLASSIQ_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Classiq import error: {e}")
+    CLASSIQ_AVAILABLE = False
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import normalize
 import torch
@@ -228,13 +234,13 @@ class QuantumNLPModel:
     ) -> Dict[str, Any]:
         """Classify sentiment using real quantum circuit"""
 
-        if not self.client.is_ready():
+        if not self.client.is_ready() or not CLASSIQ_AVAILABLE:
             logger.warning("Quantum backend not ready, using classical simulation")
             return self._classical_sentiment_classification(quantum_features)
 
         try:
             # Build quantum circuit
-            @QFunc
+            @qfunc
             def sentiment_classifier(
                 qubits: QArray[QBit, self.num_qubits],
                 measurement: Output[QArray[QBit, 3]]  # 3 qubits for 5 classes
@@ -243,7 +249,8 @@ class QuantumNLPModel:
 
                 # State preparation with amplitude encoding
                 # In real Classiq, we'd use their state preparation functions
-                apply_to_all(H, qubits)
+                for i in range(self.num_qubits):
+                    H(qubits[i])
 
                 # Encode amplitudes through rotations
                 for i in range(min(self.num_qubits, len(quantum_features.amplitude_encoding))):
@@ -304,8 +311,15 @@ class QuantumNLPModel:
     def _process_quantum_results(self, results) -> np.ndarray:
         """Process quantum measurement results into sentiment probabilities"""
 
-        counts = results.counts
+        if results is None:
+            # Return default probabilities
+            return np.array([0.1, 0.2, 0.4, 0.2, 0.1])
+
+        counts = results.get("counts", {})
         total_shots = sum(counts.values())
+
+        if total_shots == 0:
+            return np.array([0.1, 0.2, 0.4, 0.2, 0.1])
 
         # Initialize probabilities for 5 sentiment classes
         sentiment_probs = np.zeros(5)

@@ -2,6 +2,7 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==1.10.13
+pydantic-settings==2.0.0  # Added for settings management
 python-multipart==0.0.6
 python-dotenv==1.0.0
 
@@ -25,9 +26,12 @@ spacy==3.7.2
 textblob==0.17.1
 newspaper3k==0.2.8
 
-# Quantum Computing (Classiq will be separate)
+# Quantum Computing
+# Note: Install Classiq separately with: pip install classiq
+# classiq  # Uncomment this line if you want to include it in requirements
 qiskit==0.45.0
 qiskit-terra==0.45.0  # Added explicit dependency
+qiskit-finance==0.4.0  # Added for financial quantum algorithms
 
 # Market Data
 yfinance==0.2.33
