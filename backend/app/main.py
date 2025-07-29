@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import warnings
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,9 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import uvicorn
+
+# Suppress pydantic warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 from app.config import settings
 from app.api import routes
@@ -66,13 +70,17 @@ async def lifespan(app: FastAPI):
     if app.state.classiq_client.is_ready():
         try:
             logger.info("Testing quantum circuit execution...")
-            from classiq import create_model, QFunc, QBit, H, synthesize, execute
+            from classiq import create_model, qfunc, QBit, H, synthesize
 
-            @QFunc
+            @qfunc
             def test_circuit(q: QBit):
                 H(q)
 
-            model = create_model(test_circuit)
+            @qfunc
+            def main(q: QBit):
+                test_circuit(q)
+
+            model = create_model(main)
             quantum_program = synthesize(model)
             logger.info("✅ Quantum circuit synthesis successful")
 

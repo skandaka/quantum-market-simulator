@@ -76,7 +76,7 @@ class QuantumFinanceAlgorithms:
                 RY(angle, qubits[i])
 
         @qfunc
-        def quantum_monte_carlo_kernel(
+        def main(
                 price_qubits: QArray[QBit, num_qubits],
                 ancilla: QBit,
                 measurement: Output[QArray[QBit, num_qubits]]
@@ -109,7 +109,7 @@ class QuantumFinanceAlgorithms:
             measurement |= price_qubits
 
         # Create and execute model
-        model = create_model(quantum_monte_carlo_kernel)
+        model = create_model(main)
 
         try:
             results = await self.client.execute_circuit(model)
@@ -175,7 +175,7 @@ class QuantumFinanceAlgorithms:
             )
 
         @qfunc
-        def portfolio_cost_operator(
+        def main(
                 qubits: QArray[QBit, num_qubits],
                 weights: QArray[float, num_qubits]
         ):
@@ -265,7 +265,7 @@ class QuantumFinanceAlgorithms:
             )
 
         @qfunc
-        def risk_analysis_circuit(
+        def main(
                 scenario_qubits: QArray[QBit, num_qubits],
                 risk_ancilla: QBit,
                 measurement: Output[QBit]
@@ -288,7 +288,7 @@ class QuantumFinanceAlgorithms:
             # Measure risk indicator
             measurement |= risk_ancilla
 
-        model = create_model(risk_analysis_circuit)
+        model = create_model(main)
 
         try:
             results = await self.client.execute_circuit(model)

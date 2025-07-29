@@ -241,7 +241,7 @@ class QuantumNLPModel:
         try:
             # Build quantum circuit
             @qfunc
-            def sentiment_classifier(
+            def main(
                 qubits: QArray[QBit, self.num_qubits],
                 measurement: Output[QArray[QBit, 3]]  # 3 qubits for 5 classes
             ):
@@ -287,7 +287,7 @@ class QuantumNLPModel:
                 measurement |= qubits[:3]
 
             # Create and execute model
-            model = create_model(sentiment_classifier)
+            model = create_model(main)
             results = await self.client.execute_circuit(model)
 
             # Process results into sentiment probabilities

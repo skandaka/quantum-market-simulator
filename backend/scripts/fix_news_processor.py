@@ -1,4 +1,11 @@
-"""News processing and parsing service"""
+#!/usr/bin/env python3
+"""Fix the news_processor.py file to remove newspaper import"""
+
+import os
+import shutil
+
+# The correct news_processor.py content without newspaper
+NEWS_PROCESSOR_CONTENT = '''"""News processing and parsing service"""
 
 import re
 import asyncio
@@ -85,9 +92,9 @@ class NewsProcessor:
 
         if news_input.source_type == NewsSourceType.TWEET:
             # Extract hashtags, mentions, etc.
-            enriched["hashtags"] = re.findall(r'#\w+', news_input.content)
-            enriched["mentions"] = re.findall(r'@\w+', news_input.content)
-            enriched["urls"] = re.findall(r'http[s]?://\S+', news_input.content)
+            enriched["hashtags"] = re.findall(r'#\\w+', news_input.content)
+            enriched["mentions"] = re.findall(r'@\\w+', news_input.content)
+            enriched["urls"] = re.findall(r'http[s]?://\\S+', news_input.content)
 
         elif news_input.source_type == NewsSourceType.ARTICLE and news_input.source_url:
             # Fetch article summary using BeautifulSoup instead of newspaper
@@ -230,7 +237,7 @@ class NewsProcessor:
     def _extract_financial_figures(self, text: str) -> List[Dict[str, Any]]:
         """Extract financial figures from text"""
         # Pattern for currency amounts
-        currency_pattern = r'\$?\d+\.?\d*\s*(billion|million|thousand|B|M|K)?'
+        currency_pattern = r'\\$?\\d+\\.?\\d*\\s*(billion|million|thousand|B|M|K)?'
 
         figures = []
         for match in re.finditer(currency_pattern, text, re.IGNORECASE):
@@ -263,3 +270,35 @@ class NewsProcessor:
                 continue
 
         return figures
+'''
+
+
+def fix_news_processor():
+    """Fix the news_processor.py file"""
+    file_path = "app/services/news_processor.py"
+
+    # Backup the original file
+    if os.path.exists(file_path):
+        backup_path = file_path + ".backup"
+        shutil.copy(file_path, backup_path)
+        print(f"Backed up original file to {backup_path}")
+
+    # Write the corrected content
+    with open(file_path, 'w') as f:
+        f.write(NEWS_PROCESSOR_CONTENT)
+
+    print(f"Fixed {file_path} - removed newspaper import")
+
+    # Verify the fix
+    with open(file_path, 'r') as f:
+        content = f.read()
+        if 'newspaper' in content:
+            print("WARNING: 'newspaper' still found in file!")
+        else:
+            print("SUCCESS: No newspaper imports found")
+
+
+if __name__ == "__main__":
+    print("Fixing news_processor.py...")
+    print("=" * 60)
+    fix_news_processor()

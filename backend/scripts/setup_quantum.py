@@ -5,7 +5,11 @@ import os
 import sys
 import asyncio
 import logging
+import warnings
 from pathlib import Path
+
+# Suppress pydantic warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 # Add backend to path
 backend_dir = Path(__file__).parent.parent
@@ -147,11 +151,15 @@ async def test_quantum_circuit():
         from classiq import create_model, qfunc, QBit, H, synthesize, CX, Output
 
         @qfunc
-        def bell_pair(q0: QBit, q1: QBit):
+        def bell_state_prep(q0: QBit, q1: QBit):
             H(q0)
             CX(q0, q1)
 
-        model = create_model(bell_pair)
+        @qfunc
+        def main(q0: QBit, q1: QBit):
+            bell_state_prep(q0, q1)
+
+        model = create_model(main)
         quantum_program = synthesize(model)
 
         print("✅ Quantum circuit synthesized successfully!")

@@ -1,56 +1,56 @@
-#!/usr/bin/env python3
-"""Simple test to see what works with current Classiq version"""
+# backend/scripts/simple_classiq_test.py
 
-import classiq
-
-print("Testing basic Classiq functionality...")
-print("=" * 60)
-
-# Test 1: Basic imports
-try:
-    from classiq import qfunc, QBit, H, create_model
-
-    print("✅ Basic imports work")
-
-
-    # Test 2: Create a simple quantum function
-    @qfunc
-    def simple_circuit(q: QBit):
-        H(q)
+from classiq import (
+    QArray,
+    qfunc,
+    create_model,
+    synthesize,
+    show,
+    execute,
+    Output,
+    allocate,
+    CX,
+    H,
+)
 
 
-    print("✅ @qfunc decorator works")
+@qfunc
+def main():
+    """The main quantum function for the test.
+    This circuit creates a Bell state.
+    """
+    x = QArray("x", size=1)
+    y = QArray("y", size=1)
 
-    # Test 3: Create a model
-    model = create_model(simple_circuit)
-    print("✅ create_model works")
-    print(f"   Model type: {type(model)}")
+    allocate(1, x)
+    allocate(1, y)
 
-    # Test 4: Synthesize
-    from classiq import synthesize
+    H(x)
+    CX(x, y)
 
-    qprog = synthesize(model)
-    print("✅ synthesize works")
-    print(f"   Quantum program type: {type(qprog)}")
+    Output(x)
+    Output(y)
 
-except Exception as e:
-    print(f"❌ Error in basic test: {e}")
-    import traceback
 
-    traceback.print_exc()
-
-# Test what types are available
-print("\nChecking available types:")
-print("=" * 60)
-
-type_checks = [
-    ('Model', lambda: type(create_model(lambda q: H(q)))),
-    ('QuantumProgram', lambda: type(synthesize(create_model(lambda q: H(q))))),
-]
-
-for name, getter in type_checks:
+def run_classiq_test():
+    """Runs the basic functionality test for Classiq."""
+    print("Testing basic Classiq functionality...")
+    print("=" * 60)
     try:
-        t = getter()
-        print(f"✅ {name} type: {t}")
+        # Test model creation with the 'main' entry point
+        model = create_model(main)
+        print("✅ Model creation successful")
+
+        # Test synthesis
+        qprog = synthesize(model)
+        print("✅ Synthesis successful")
+
     except Exception as e:
-        print(f"❌ {name}: {e}")
+        import traceback
+        print(f"❌ Error in basic test: {e}")
+        print("Traceback:")
+        traceback.print_exc()
+
+
+if __name__ == "__main__":
+    run_classiq_test()

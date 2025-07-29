@@ -57,7 +57,7 @@ class ClassiqClient:
             return None
 
         @qfunc
-        def oracle(target: QBit):
+        def main(target: QBit):
             """Oracle marking states based on probability distribution"""
             # This is a simplified oracle - in practice, would encode
             # the probability distribution more sophisticatedly
@@ -66,7 +66,7 @@ class ClassiqClient:
         @qfunc
         def grover_operator(qubits: QArray[QBit], oracle_workspace: QBit):
             """Grover operator for amplitude amplification"""
-            oracle(oracle_workspace)
+            main(oracle_workspace)  # Changed from oracle
             # apply_to_all is not available, use loop instead
             for i in range(len(qubits)):
                 H(qubits[i])
@@ -77,7 +77,7 @@ class ClassiqClient:
                 H(qubits[i])
 
         @qfunc
-        def amplitude_estimation_circuit(
+        def main(
             qubits: QArray[QBit, num_qubits],
             oracle_workspace: QBit,
             measurement: Output[QArray[QBit, num_qubits]]
@@ -95,7 +95,7 @@ class ClassiqClient:
             measurement |= qubits
 
         # Create and synthesize model
-        model = create_model(amplitude_estimation_circuit)
+        model = create_model(main)
 
         # Set constraints for Classiq synthesis
         constraints = {
@@ -129,7 +129,7 @@ class ClassiqClient:
             return None
 
         @qfunc
-        def vqe_ansatz(
+        def main(
             qubits: QArray[QBit, num_qubits],
             parameters: QArray[float, num_layers * num_qubits * 2]
         ):
@@ -153,7 +153,7 @@ class ClassiqClient:
                     CX(qubits[num_qubits - 1], qubits[0])
 
         # Create model
-        model = create_model(vqe_ansatz)
+        model = create_model(main)
 
         # Set optimization preferences
         preferences = {
@@ -191,7 +191,7 @@ class ClassiqClient:
                 RY(features[i] * np.pi, qubits[i])
 
         @qfunc
-        def variational_classifier(
+        def main(
             qubits: QArray[QBit, num_qubits],
             params: QArray[float, num_qubits * 4],
             features: QArray[float, num_features]
@@ -214,7 +214,7 @@ class ClassiqClient:
                 RY(params[num_qubits * 2 + i * 2], qubits[i])
                 RZ(params[num_qubits * 2 + i * 2 + 1], qubits[i])
 
-        model = create_model(variational_classifier)
+        model = create_model(main)
         return model
 
     async def execute_circuit(
