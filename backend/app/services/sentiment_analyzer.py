@@ -1,13 +1,25 @@
-"""Sentiment analysis service with real quantum enhancement"""
-
 import asyncio
 import logging
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
-from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 import torch
 from textblob import TextBlob
-import spacy
+
+# Import transformers components individually to avoid conflicts
+try:
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification
+    from transformers import pipeline
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    logging.warning("Transformers not available")
+
+try:
+    import spacy
+    SPACY_AVAILABLE = True
+except ImportError:
+    SPACY_AVAILABLE = False
+    logging.warning("SpaCy not available")
 
 from app.models.schemas import SentimentAnalysis, SentimentType
 from app.quantum.qnlp_model import QuantumNLPModel
@@ -18,54 +30,68 @@ logger = logging.getLogger(__name__)
 
 
 class SentimentAnalyzer:
-    """Hybrid classical-quantum sentiment analyzer with real quantum backend"""
+    """Hybrid classical-quantum sentiment analyzer with lazy loading"""
 
     def __init__(self, quantum_client: ClassiqClient):
         self.quantum_client = quantum_client
         self.qnlp_model = QuantumNLPModel(quantum_client)
 
-        # Initialize classical models
-        self._init_classical_models()
+        # Initialize with None - load on first use
+        self.finbert = None
+        self.general_sentiment = None
+        self.nlp = None
 
-        # Load spaCy for entity recognition
-        try:
-            self.nlp = spacy.load("en_core_web_sm")
-        except:
-            logger.warning("SpaCy model not found, entity extraction will be limited")
-            self.nlp = None
+        # Track initialization status
+        self._finbert_initialized = False
+        self._spacy_initialized = False
 
         # Track quantum usage for optimization
         self.quantum_call_count = 0
         self.quantum_success_rate = 1.0
 
-    def _init_classical_models(self):
-        """Initialize classical NLP models"""
+    async def initialize(self):
+        """Initialize the sentiment analyzer with lazy loading"""
+        logger.info("Initializing sentiment analyzer...")
+
+        # Initialize quantum components
+        await self.qnlp_model.initialize()
+
+        # Don't load heavy models immediately - wait for first use
+        logger.info("Sentiment analyzer initialized (models will load on demand)")
+
+    def _init_finbert(self):
+        """Lazy initialization of FinBERT model"""
+        if self._finbert_initialized or not TRANSFORMERS_AVAILABLE:
+            return
+
         try:
-            # FinBERT for financial sentiment
+            logger.info("Loading FinBERT model...")
             self.finbert = pipeline(
                 "sentiment-analysis",
                 model="ProsusAI/finbert",
-                device=0 if torch.cuda.is_available() else -1
+                device=0 if torch.cuda.is_available() else -1,
+                model_kwargs={"cache_dir": "./models"}  # Cache locally
             )
             logger.info("FinBERT model loaded successfully")
         except Exception as e:
             logger.warning(f"Could not load FinBERT: {e}")
             self.finbert = None
+        finally:
+            self._finbert_initialized = True
 
-        # General sentiment model as backup
+    def _init_spacy(self):
+        """Lazy initialization of spaCy model"""
+        if self._spacy_initialized or not SPACY_AVAILABLE:
+            return
+
         try:
-            self.general_sentiment = pipeline(
-                "sentiment-analysis",
-                model="distilbert-base-uncased-finetuned-sst-2-english"
-            )
-        except:
-            logger.warning("Could not load general sentiment model")
-            self.general_sentiment = None
-
-    async def initialize(self):
-        """Initialize the sentiment analyzer"""
-        await self.qnlp_model.initialize()
-        logger.info("Sentiment analyzer initialized")
+            self.nlp = spacy.load("en_core_web_sm")
+            logger.info("SpaCy model loaded successfully")
+        except Exception as e:
+            logger.warning(f"SpaCy model not found: {e}")
+            self.nlp = None
+        finally:
+            self._spacy_initialized = True
 
     async def analyze_batch(
         self,
@@ -73,6 +99,10 @@ class SentimentAnalyzer:
         use_quantum: bool = True
     ) -> List[SentimentAnalysis]:
         """Analyze sentiment for multiple news items"""
+
+        # Initialize models on first use
+        if not self._finbert_initialized:
+            self._init_finbert()
 
         # Determine which items should use quantum
         quantum_candidates = []
@@ -91,7 +121,7 @@ class SentimentAnalyzer:
         # Process in parallel
         tasks = []
 
-        # Quantum processing
+        # Quantum processing (limited)
         for idx, news in quantum_candidates[:3]:  # Limit quantum calls
             task = self._analyze_with_quantum(news, idx)
             tasks.append(task)
@@ -149,25 +179,16 @@ class SentimentAnalyzer:
 
     async def _should_use_quantum(self) -> bool:
         """Determine if quantum backend should be used"""
-
-        # Check if quantum client is ready
         if not self.quantum_client.is_ready():
             return False
-
-        # Adaptive quantum usage based on success rate
         if self.quantum_success_rate < 0.5:
             return False
-
-        # Rate limiting
         if self.quantum_call_count > 100:  # Daily limit
             return False
-
         return True
 
     def _is_high_impact(self, processed_news: Dict[str, Any]) -> bool:
         """Determine if news is high-impact and worth quantum processing"""
-
-        # Check for high-impact keywords
         high_impact_keywords = {
             "crash", "surge", "plunge", "soar", "bankruptcy", "merger",
             "acquisition", "scandal", "breakthrough", "record", "unprecedented"
@@ -177,12 +198,10 @@ class SentimentAnalyzer:
         if any(keyword in text_lower for keyword in high_impact_keywords):
             return True
 
-        # Check for multiple financial entities
         entities = processed_news.get("entities", {})
         if len(entities.get("organizations", [])) > 2:
             return True
 
-        # Check text metrics
         metrics = processed_news.get("text_metrics", {})
         if metrics.get("exclamation_count", 0) > 2:
             return True
@@ -195,7 +214,6 @@ class SentimentAnalyzer:
         index: int
     ) -> Tuple[int, SentimentAnalysis]:
         """Analyze using quantum-enhanced processing"""
-
         text = processed_news["cleaned_text"]
         self.quantum_call_count += 1
 
@@ -250,7 +268,6 @@ class SentimentAnalyzer:
         index: int
     ) -> Tuple[int, SentimentAnalysis]:
         """Analyze using only classical methods"""
-
         text = processed_news["cleaned_text"]
 
         # Run classical analysis
@@ -276,9 +293,12 @@ class SentimentAnalyzer:
         return (index, analysis)
 
     async def _classical_analysis(self, text: str) -> Dict[str, Any]:
-        """Run classical sentiment analysis"""
+        """Run classical sentiment analysis with lazy model loading"""
 
-        # Try FinBERT first
+        # Try FinBERT first (load on demand)
+        if not self._finbert_initialized:
+            self._init_finbert()
+
         if self.finbert:
             try:
                 result = self.finbert(text[:512])[0]  # BERT limit
@@ -396,7 +416,10 @@ class SentimentAnalyzer:
             }
 
     def _extract_entities(self, text: str) -> List[Dict[str, str]]:
-        """Extract named entities from text"""
+        """Extract named entities from text with lazy spaCy loading"""
+
+        if not self._spacy_initialized:
+            self._init_spacy()
 
         if not self.nlp:
             return []
@@ -422,7 +445,6 @@ class SentimentAnalyzer:
 
     def _extract_key_phrases(self, processed_news: Dict[str, Any]) -> List[str]:
         """Extract key phrases from processed news"""
-
         key_phrases = []
 
         # Add detected entities
@@ -448,7 +470,6 @@ class SentimentAnalyzer:
 
     def _get_impact_keywords(self, financial_keywords: Dict[str, List[str]]) -> List[str]:
         """Get high-impact market keywords"""
-
         high_impact = []
 
         # Priority keywords
