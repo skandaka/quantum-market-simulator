@@ -20,10 +20,13 @@ pip install "torch>=2.2.0"
 pip install transformers==4.35.2
 pip install scikit-learn==1.3.2
 pip install openai
+pip install spacy==3.7.2
+python -m spacy download en_core_web_sm
 
 echo "Installing other dependencies..."
 pip install beautifulsoup4==4.12.2
 pip install lxml==4.9.3
 pip install lxml_html_clean
+pip install retry
 
 echo "Dependencies installed!"

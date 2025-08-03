@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Check Classiq availability
 try:
     import classiq
-    from classiq import authenticate, set_credentials
+    from classiq import authenticate
 
     CLASSIQ_AVAILABLE = True
     logger.info(f"Classiq version {getattr(classiq, '__version__', 'unknown')} available")
@@ -25,11 +25,7 @@ except ImportError as e:
 
 
     # Mock functions for development
-    def authenticate():
-        raise RuntimeError("Classiq not installed")
-
-
-    def set_credentials(**kwargs):
+    def authenticate(**kwargs):
         raise RuntimeError("Classiq not installed")
 
 
@@ -82,20 +78,23 @@ class ClassiqAuthManager:
 
         try:
             if self.config.api_key and self.config.api_key != "your_actual_api_key_here":
-                # Use API key authentication
+                # Use API key authentication in a separate thread
                 logger.info("Authenticating with Classiq using API key...")
-                set_credentials(api_key=self.config.api_key)
+                await asyncio.to_thread(authenticate, {"api_key": self.config.api_key})
                 self._authenticated = True
-                logger.info("✅ Classiq authentication successful")
+                logger.info("✅ Classiq authentication successful with API Key")
             else:
-                logger.warning("No valid API key found - quantum features limited")
-                self._authenticated = False
+                # Use browser-based authentication in a separate thread
+                logger.warning("No valid API key found. Attempting browser-based authentication.")
+                await asyncio.to_thread(authenticate)
+                self._authenticated = True
+                logger.info("✅ Classiq authentication successful via browser.")
 
             self._initialized = True
 
         except Exception as e:
             self._last_error = str(e)
-            logger.error(f"Classiq authentication failed: {e}")
+            logger.error(f"Classiq authentication failed: {e}", exc_info=True)
             self._authenticated = False
             self._initialized = True
 
