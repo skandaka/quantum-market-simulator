@@ -1,63 +1,89 @@
-import asyncio
+# backend/app/services/sentiment_analyzer.py
+
 import logging
+import asyncio
+from typing import List, Dict, Any, Tuple, Optional
 import numpy as np
-from typing import List, Dict, Any, Optional, Tuple
+from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 import torch
-from textblob import TextBlob
-
-# Import transformers components individually to avoid conflicts
-try:
-    from transformers import AutoTokenizer, AutoModelForSequenceClassification
-    from transformers import pipeline
-    TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    TRANSFORMERS_AVAILABLE = False
-    logging.warning("Transformers not available")
-
-try:
-    import spacy
-    SPACY_AVAILABLE = True
-except ImportError:
-    SPACY_AVAILABLE = False
-    logging.warning("SpaCy not available")
+import spacy
+from datetime import datetime
 
 from app.models.schemas import SentimentAnalysis, SentimentType
 from app.quantum.qnlp_model import QuantumNLPModel
-from app.quantum.classiq_client import ClassiqClient
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Try to import optional dependencies
+try:
+    from transformers import pipeline
+
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    logger.warning("Transformers not available")
+
+try:
+    import spacy
+
+    SPACY_AVAILABLE = True
+except ImportError:
+    SPACY_AVAILABLE = False
+    logger.warning("SpaCy not available")
+
+# Crisis keywords with severity scores
+CRISIS_KEYWORDS = {
+    "health_severe": {
+        "keywords": ["cancer", "radiation", "toxic", "poison", "deadly", "fatal", "death", "kills", "carcinogen"],
+        "severity": 0.9
+    },
+    "health_moderate": {
+        "keywords": ["illness", "sick", "disease", "outbreak", "contamination", "harmful", "hazard"],
+        "severity": 0.7
+    },
+    "legal_severe": {
+        "keywords": ["fraud", "criminal", "indicted", "arrested", "guilty", "convicted", "jail", "prison"],
+        "severity": 0.8
+    },
+    "financial_severe": {
+        "keywords": ["bankruptcy", "collapse", "crash", "default", "insolvent", "liquidation"],
+        "severity": 0.85
+    },
+    "regulatory_severe": {
+        "keywords": ["banned", "illegal", "shutdown", "investigation", "probe", "violation"],
+        "severity": 0.75
+    }
+}
+
 
 class SentimentAnalyzer:
-    """Hybrid classical-quantum sentiment analyzer with lazy loading"""
+    """Advanced sentiment analyzer with quantum capabilities"""
 
-    def __init__(self, quantum_client: ClassiqClient):
-        self.quantum_client = quantum_client
-        self.qnlp_model = QuantumNLPModel(quantum_client)
-
-        # Initialize with None - load on first use
+    def __init__(self, classiq_client=None):
+        self.classiq_client = classiq_client
+        self.qnlp_model = QuantumNLPModel(classiq_client) if classiq_client else QuantumNLPModel(None)
+        self.classical_model = None
         self.finbert = None
-        self.general_sentiment = None
         self.nlp = None
-
-        # Track initialization status
+        self._initialized = False
         self._finbert_initialized = False
         self._spacy_initialized = False
-
-        # Track quantum usage for optimization
-        self.quantum_call_count = 0
-        self.quantum_success_rate = 1.0
+        self.quantum_success_rate = 0.0  # Track success rate
 
     async def initialize(self):
-        """Initialize the sentiment analyzer with lazy loading"""
-        logger.info("Initializing sentiment analyzer...")
+        """Initialize sentiment analyzer components"""
+        if self._initialized:
+            return
 
-        # Initialize quantum components
-        await self.qnlp_model.initialize()
+        try:
+            # Initialize quantum model
+            await self.qnlp_model.initialize()
+            logger.info("Quantum NLP model initialized")
+        except Exception as e:
+            logger.warning(f"Quantum NLP initialization failed: {e}")
 
-        # Don't load heavy models immediately - wait for first use
-        logger.info("Sentiment analyzer initialized (models will load on demand)")
+        self._initialized = True
 
     def _init_finbert(self):
         """Lazy initialization of FinBERT model"""
@@ -65,16 +91,14 @@ class SentimentAnalyzer:
             return
 
         try:
-            logger.info("Loading FinBERT model...")
             self.finbert = pipeline(
                 "sentiment-analysis",
                 model="ProsusAI/finbert",
-                device=0 if torch.cuda.is_available() else -1,
-                model_kwargs={"cache_dir": "./models"}  # Cache locally
+                device=0 if torch.cuda.is_available() else -1
             )
             logger.info("FinBERT model loaded successfully")
         except Exception as e:
-            logger.warning(f"Could not load FinBERT: {e}")
+            logger.warning(f"FinBERT initialization failed: {e}")
             self.finbert = None
         finally:
             self._finbert_initialized = True
@@ -93,10 +117,40 @@ class SentimentAnalyzer:
         finally:
             self._spacy_initialized = True
 
+    def _check_crisis(self, text: str) -> Dict[str, Any]:
+        """Check for crisis keywords in text"""
+        text_lower = text.lower()
+        triggered_keywords = []
+        triggered_categories = []
+        max_severity = 0.0
+
+        for category, config in CRISIS_KEYWORDS.items():
+            for keyword in config["keywords"]:
+                if keyword in text_lower:
+                    triggered_keywords.append(keyword)
+                    triggered_categories.append(category)
+                    max_severity = max(max_severity, config["severity"])
+
+        # Amplify severity for multiple keywords or certain contexts
+        if len(triggered_keywords) > 2:
+            max_severity = min(1.0, max_severity * 1.2)
+
+        # Check for amplifying words
+        amplifiers = ["millions", "widespread", "everyone", "massive", "all"]
+        if any(word in text_lower for word in amplifiers):
+            max_severity = min(1.0, max_severity * 1.15)
+
+        return {
+            "is_crisis": len(triggered_keywords) > 0,
+            "severity": max_severity,
+            "keywords": list(set(triggered_keywords)),
+            "categories": list(set(triggered_categories))
+        }
+
     async def analyze_batch(
-        self,
-        processed_news: List[Dict[str, Any]],
-        use_quantum: bool = True
+            self,
+            processed_news: List[Dict[str, Any]],
+            use_quantum: bool = True
     ) -> List[SentimentAnalysis]:
         """Analyze sentiment for multiple news items"""
 
@@ -147,12 +201,12 @@ class SentimentAnalyzer:
                 if not isinstance(analysis, Exception):
                     analyzed[idx] = analysis
                 else:
-                    logger.error(f"Analysis failed for item {idx}: {analysis}")
+                    logger.error(f"Analysis error: {analysis}")
                     analyzed[idx] = self._create_neutral_sentiment()
             else:
                 logger.error(f"Unexpected result format: {result}")
 
-        # Fill any remaining None values
+        # Replace None with neutral sentiment
         for i in range(len(analyzed)):
             if analyzed[i] is None:
                 analyzed[i] = self._create_neutral_sentiment()
@@ -160,64 +214,78 @@ class SentimentAnalyzer:
         return analyzed
 
     async def analyze_single(
-        self,
-        processed_news: Dict[str, Any],
-        use_quantum: bool = True
+            self,
+            processed_news: Dict[str, Any],
+            use_quantum: bool = True
     ) -> SentimentAnalysis:
         """Analyze sentiment for a single news item"""
 
-        if use_quantum and await self._should_use_quantum() and self._is_high_impact(processed_news):
-            try:
-                _, analysis = await self._analyze_with_quantum(processed_news, 0)
-                return analysis
-            except Exception as e:
-                logger.error(f"Quantum analysis failed: {e}")
+        text = processed_news.get("cleaned_text", "")
 
-        # Fallback to classical
-        _, analysis = await self._analyze_with_classical(processed_news, 0)
-        return analysis
+        # First, check for crisis
+        crisis_check = self._check_crisis(text)
+
+        if crisis_check["is_crisis"]:
+            # Crisis detected - return strong negative sentiment
+            severity = crisis_check["severity"]
+
+            if severity >= 0.8:
+                sentiment = SentimentType.VERY_NEGATIVE
+                confidence = 0.95
+                quantum_vector = [0.0, 0.0, 0.0, 0.05, 0.95]
+            else:
+                sentiment = SentimentType.NEGATIVE
+                confidence = 0.9
+                quantum_vector = [0.0, 0.0, 0.1, 0.3, 0.6]
+
+            return SentimentAnalysis(
+                sentiment=sentiment,
+                confidence=confidence,
+                quantum_sentiment_vector=quantum_vector,
+                classical_sentiment_score=1 - severity,
+                entities_detected=self._extract_entities(text),
+                key_phrases=crisis_check["keywords"],
+                market_impact_keywords=crisis_check["keywords"]
+            )
+
+        # No crisis - proceed with normal analysis
+        result = await self.analyze_batch([processed_news], use_quantum)
+        return result[0] if result else self._create_neutral_sentiment()
 
     async def _should_use_quantum(self) -> bool:
-        """Determine if quantum backend should be used"""
-        if not self.quantum_client.is_ready():
+        """Determine if quantum processing should be used"""
+        # Use quantum if available and success rate is good
+        if not self.qnlp_model.is_ready():
             return False
-        if self.quantum_success_rate < 0.5:
-            return False
-        if self.quantum_call_count > 100:  # Daily limit
-            return False
-        return True
 
-    def _is_high_impact(self, processed_news: Dict[str, Any]) -> bool:
-        """Determine if news is high-impact and worth quantum processing"""
-        high_impact_keywords = {
-            "crash", "surge", "plunge", "soar", "bankruptcy", "merger",
-            "acquisition", "scandal", "breakthrough", "record", "unprecedented"
-        }
+        # Start with 50% chance, adjust based on success rate
+        base_probability = 0.5
+        adjusted_probability = base_probability + (self.quantum_success_rate * 0.3)
 
-        text_lower = processed_news.get("cleaned_text", "").lower()
-        if any(keyword in text_lower for keyword in high_impact_keywords):
-            return True
+        return np.random.random() < adjusted_probability
 
-        entities = processed_news.get("entities", {})
-        if len(entities.get("organizations", [])) > 2:
-            return True
+    def _is_high_impact(self, news: Dict[str, Any]) -> bool:
+        """Determine if news is high impact and worth quantum processing"""
+        # Check for high-impact keywords
+        text = news.get("cleaned_text", "").lower()
 
-        metrics = processed_news.get("text_metrics", {})
-        if metrics.get("exclamation_count", 0) > 2:
-            return True
+        high_impact_words = [
+            "breakthrough", "crash", "surge", "plunge", "scandal",
+            "merger", "acquisition", "bankruptcy", "investigation",
+            "earnings", "revenue", "profit", "loss"
+        ]
 
-        return False
+        return any(word in text for word in high_impact_words)
 
     async def _analyze_with_quantum(
-        self,
-        processed_news: Dict[str, Any],
-        index: int
+            self,
+            processed_news: Dict[str, Any],
+            index: int
     ) -> Tuple[int, SentimentAnalysis]:
-        """Analyze using quantum-enhanced processing"""
-        text = processed_news["cleaned_text"]
-        self.quantum_call_count += 1
-
+        """Analyze using quantum NLP model"""
         try:
+            text = processed_news["cleaned_text"]
+
             # Encode text for quantum processing
             quantum_features = await self.qnlp_model.encode_text_quantum(text)
 
@@ -263,12 +331,29 @@ class SentimentAnalyzer:
             return await self._analyze_with_classical(processed_news, index)
 
     async def _analyze_with_classical(
-        self,
-        processed_news: Dict[str, Any],
-        index: int
+            self,
+            processed_news: Dict[str, Any],
+            index: int
     ) -> Tuple[int, SentimentAnalysis]:
         """Analyze using only classical methods"""
         text = processed_news["cleaned_text"]
+
+        # Check for crisis first
+        crisis_check = self._check_crisis(text)
+        if crisis_check["is_crisis"]:
+            # Return crisis sentiment
+            severity = crisis_check["severity"]
+            sentiment = SentimentType.VERY_NEGATIVE if severity >= 0.8 else SentimentType.NEGATIVE
+
+            return (index, SentimentAnalysis(
+                sentiment=sentiment,
+                confidence=0.9,
+                quantum_sentiment_vector=[],
+                classical_sentiment_score=1 - severity,
+                entities_detected=self._extract_entities(text),
+                key_phrases=crisis_check["keywords"],
+                market_impact_keywords=crisis_check["keywords"]
+            ))
 
         # Run classical analysis
         classical_result = await self._classical_analysis(text)
@@ -281,9 +366,9 @@ class SentimentAnalyzer:
         )
 
         analysis = SentimentAnalysis(
-            sentiment=classical_result["sentiment"],
-            confidence=classical_result["score"],
-            quantum_sentiment_vector=[],  # No quantum vector
+            sentiment=self._score_to_sentiment(classical_result["score"]),
+            confidence=classical_result["confidence"],
+            quantum_sentiment_vector=[],
             classical_sentiment_score=classical_result["score"],
             entities_detected=entities,
             key_phrases=key_phrases,
@@ -293,131 +378,164 @@ class SentimentAnalyzer:
         return (index, analysis)
 
     async def _classical_analysis(self, text: str) -> Dict[str, Any]:
-        """Run classical sentiment analysis with lazy model loading"""
-
-        # Try FinBERT first (load on demand)
+        """Perform classical sentiment analysis"""
+        # Initialize FinBERT if needed
         if not self._finbert_initialized:
             self._init_finbert()
 
         if self.finbert:
             try:
-                result = self.finbert(text[:512])[0]  # BERT limit
-
-                # Map labels
-                label_map = {
-                    "positive": SentimentType.POSITIVE,
-                    "negative": SentimentType.NEGATIVE,
-                    "neutral": SentimentType.NEUTRAL
-                }
-
-                sentiment = label_map.get(
-                    result["label"].lower(),
-                    SentimentType.NEUTRAL
-                )
-
-                score = result["score"]
-
-                # Add intensity for very positive/negative
-                if score > 0.9:
-                    if sentiment == SentimentType.POSITIVE:
-                        sentiment = SentimentType.VERY_POSITIVE
-                    elif sentiment == SentimentType.NEGATIVE:
-                        sentiment = SentimentType.VERY_NEGATIVE
-
-                return {
-                    "sentiment": sentiment,
-                    "score": score,
-                    "method": "finbert"
-                }
-
+                # Run FinBERT
+                result = await self._run_finbert(text)
+                return result
             except Exception as e:
-                logger.debug(f"FinBERT failed: {e}")
+                logger.error(f"FinBERT analysis failed: {e}")
 
-        # Fallback to TextBlob
-        try:
-            blob = TextBlob(text)
-            polarity = blob.sentiment.polarity
+        # Fallback to rule-based
+        return self._rule_based_sentiment(text)
 
-            if polarity > 0.5:
-                sentiment = SentimentType.VERY_POSITIVE
-            elif polarity > 0.1:
-                sentiment = SentimentType.POSITIVE
-            elif polarity < -0.5:
-                sentiment = SentimentType.VERY_NEGATIVE
-            elif polarity < -0.1:
-                sentiment = SentimentType.NEGATIVE
-            else:
-                sentiment = SentimentType.NEUTRAL
+    async def _run_finbert(self, text: str) -> Dict[str, Any]:
+        """Run FinBERT sentiment analysis"""
+        # Truncate text for BERT
+        truncated_text = text[:500]
 
-            return {
-                "sentiment": sentiment,
-                "score": min(abs(polarity) + 0.5, 1.0),
-                "method": "textblob"
-            }
+        # Run in thread pool to avoid blocking
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: self.finbert(truncated_text)[0]
+        )
 
-        except:
-            return {
-                "sentiment": SentimentType.NEUTRAL,
-                "score": 0.5,
-                "method": "fallback"
-            }
+        # Map FinBERT output
+        label = result["label"].lower()
+        score = result["score"]
 
-    def _combine_quantum_classical(
-        self,
-        quantum_result: Dict[str, Any],
-        classical_result: Dict[str, Any],
-        weight_quantum: float = 0.6
-    ) -> Dict[str, Any]:
-        """Intelligently combine quantum and classical results"""
+        # Convert to normalized score
+        if label == "positive":
+            normalized_score = 0.5 + (score * 0.5)
+        elif label == "negative":
+            normalized_score = 0.5 - (score * 0.5)
+        else:  # neutral
+            normalized_score = 0.5
 
-        # Get sentiment indices
-        sentiment_map = {
-            SentimentType.VERY_NEGATIVE: 0,
-            SentimentType.NEGATIVE: 1,
-            SentimentType.NEUTRAL: 2,
-            SentimentType.POSITIVE: 3,
-            SentimentType.VERY_POSITIVE: 4
+        return {
+            "score": normalized_score,
+            "confidence": score,
+            "method": "finbert"
         }
 
-        classical_idx = sentiment_map[classical_result["sentiment"]]
-        quantum_sentiment = quantum_result["predicted_sentiment"]
-        quantum_idx = sentiment_map[SentimentType(quantum_sentiment)]
+    def _rule_based_sentiment(self, text: str) -> Dict[str, Any]:
+        """Simple rule-based sentiment as fallback"""
+        text_lower = text.lower()
 
-        # Check agreement
-        if classical_idx == quantum_idx:
-            # Strong agreement - high confidence
-            return {
-                "sentiment": classical_result["sentiment"],
-                "confidence": min(
-                    weight_quantum * quantum_result["confidence"] +
-                    (1 - weight_quantum) * classical_result["score"] +
-                    0.1,  # Agreement bonus
-                    0.95
-                )
-            }
-        elif abs(classical_idx - quantum_idx) == 1:
-            # Close agreement - weighted average
-            avg_idx = weight_quantum * quantum_idx + (1 - weight_quantum) * classical_idx
-            final_idx = int(round(avg_idx))
+        positive_words = [
+            "profit", "gain", "growth", "surge", "breakthrough",
+            "success", "positive", "beat", "exceed", "upgrade"
+        ]
 
-            sentiments = list(sentiment_map.keys())
-            return {
-                "sentiment": sentiments[final_idx],
-                "confidence": (
-                    weight_quantum * quantum_result["confidence"] +
-                    (1 - weight_quantum) * classical_result["score"]
-                ) * 0.9  # Small penalty for minor disagreement
-            }
+        negative_words = [
+            "loss", "decline", "fall", "crash", "negative",
+            "miss", "downgrade", "concern", "risk", "threat"
+        ]
+
+        pos_count = sum(1 for word in positive_words if word in text_lower)
+        neg_count = sum(1 for word in negative_words if word in text_lower)
+
+        if pos_count > neg_count:
+            score = 0.5 + (0.1 * min(pos_count - neg_count, 5))
+        elif neg_count > pos_count:
+            score = 0.5 - (0.1 * min(neg_count - pos_count, 5))
         else:
-            # Disagreement - prefer classical but reduce confidence
-            return {
-                "sentiment": classical_result["sentiment"],
-                "confidence": classical_result["score"] * 0.7
-            }
+            score = 0.5
+
+        confidence = min(0.8, 0.5 + 0.1 * (pos_count + neg_count))
+
+        return {
+            "score": score,
+            "confidence": confidence,
+            "method": "rule_based"
+        }
+
+    def _combine_quantum_classical(
+            self,
+            quantum_result: Dict[str, Any],
+            classical_result: Dict[str, Any],
+            weight_quantum: float = 0.7
+    ) -> Dict[str, Any]:
+        """Combine quantum and classical results"""
+        # Get quantum sentiment from probability distribution
+        quantum_probs = quantum_result["probabilities"]
+        quantum_sentiment = self._probs_to_sentiment(quantum_probs)
+        quantum_confidence = quantum_result.get("confidence", 0.8)
+
+        # Get classical sentiment
+        classical_sentiment = self._score_to_sentiment(classical_result["score"])
+        classical_confidence = classical_result["confidence"]
+
+        # Weighted combination
+        if quantum_sentiment == classical_sentiment:
+            # Agreement - high confidence
+            final_sentiment = quantum_sentiment
+            final_confidence = min(0.95,
+                                   weight_quantum * quantum_confidence +
+                                   (1 - weight_quantum) * classical_confidence + 0.1)
+        else:
+            # Disagreement - use weighted approach
+            if quantum_confidence > classical_confidence * 1.5:
+                final_sentiment = quantum_sentiment
+            elif classical_confidence > quantum_confidence * 1.5:
+                final_sentiment = classical_sentiment
+            else:
+                # Close confidence - use quantum with reduced confidence
+                final_sentiment = quantum_sentiment
+
+            final_confidence = min(0.85,
+                                   weight_quantum * quantum_confidence +
+                                   (1 - weight_quantum) * classical_confidence)
+
+        return {
+            "sentiment": final_sentiment,
+            "confidence": final_confidence
+        }
+
+    def _probs_to_sentiment(self, probabilities: np.ndarray) -> SentimentType:
+        """Convert probability distribution to sentiment type"""
+        # Assuming 5 classes: very_negative, negative, neutral, positive, very_positive
+        sentiment_idx = np.argmax(probabilities)
+
+        mapping = {
+            0: SentimentType.VERY_NEGATIVE,
+            1: SentimentType.NEGATIVE,
+            2: SentimentType.NEUTRAL,
+            3: SentimentType.POSITIVE,
+            4: SentimentType.VERY_POSITIVE
+        }
+
+        return mapping.get(sentiment_idx, SentimentType.NEUTRAL)
+
+    def _score_to_sentiment(self, score: float) -> SentimentType:
+        """Convert numerical score to sentiment type"""
+        if score < 0.2:
+            return SentimentType.VERY_NEGATIVE
+        elif score < 0.4:
+            return SentimentType.NEGATIVE
+        elif score < 0.6:
+            return SentimentType.NEUTRAL
+        elif score < 0.8:
+            return SentimentType.POSITIVE
+        else:
+            return SentimentType.VERY_POSITIVE
+
+    def _map_finbert_sentiment(self, label: str) -> SentimentType:
+        """Map FinBERT labels to our sentiment types"""
+        mapping = {
+            "positive": SentimentType.POSITIVE,
+            "negative": SentimentType.NEGATIVE,
+            "neutral": SentimentType.NEUTRAL
+        }
+        return mapping.get(label.lower(), SentimentType.NEUTRAL)
 
     def _extract_entities(self, text: str) -> List[Dict[str, str]]:
-        """Extract named entities from text with lazy spaCy loading"""
-
+        """Extract named entities from text"""
         if not self._spacy_initialized:
             self._init_spacy()
 
@@ -425,9 +543,9 @@ class SentimentAnalyzer:
             return []
 
         try:
-            doc = self.nlp(text[:1000])  # Limit length
-
+            doc = self.nlp(text[:1000])  # Limit text length
             entities = []
+
             for ent in doc.ents:
                 if ent.label_ in ["ORG", "PERSON", "GPE", "MONEY", "PERCENT", "DATE"]:
                     entities.append({

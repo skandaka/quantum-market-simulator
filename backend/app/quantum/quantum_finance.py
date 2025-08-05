@@ -552,3 +552,4 @@ class QuantumFinanceAlgorithms:
             "quantum_speedup": 1.0,
             "scenarios_analyzed": len(market_scenarios.prices)
         }
+

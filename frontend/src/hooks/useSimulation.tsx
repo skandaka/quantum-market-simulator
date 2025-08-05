@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 import { io, Socket } from 'socket.io-client';
-import { simulationAPI } from '../services/api';
+import { simulationApi } from '../services/api';
 import {
     setSimulationResults,
     setSimulationStatus,
@@ -28,12 +28,12 @@ export const useSimulation = () => {
             // console.log('WebSocket connected');
         });
 
-        socketInstance.on('progress', (data) => {
+        socketInstance.on('progress', (data: any) => {
             setProgress(data.progress * 100);
             dispatch(setSimulationProgress(data));
         });
 
-        socketInstance.on('error', (error) => {
+        socketInstance.on('error', (error: any) => {
             console.error('WebSocket error:', error);
             toast.error('Connection error');
         });
@@ -52,7 +52,7 @@ export const useSimulation = () => {
 
         try {
             // Run the simulation
-            const response = await simulationAPI.runSimulation(request);
+            const response = await simulationApi.runSimulation(request);
 
             // Subscribe to simulation updates if WebSocket is connected
             if (socket && socket.connected) {
@@ -78,7 +78,7 @@ export const useSimulation = () => {
         setIsLoading(true);
 
         try {
-            const response = await simulationAPI.runBacktest(request);
+            const response = await simulationApi.runBacktest(request);
             return response;
         } catch (error) {
             console.error('Backtest error:', error);
@@ -91,7 +91,7 @@ export const useSimulation = () => {
 
     const getQuantumStatus = useCallback(async () => {
         try {
-            const status = await simulationAPI.getQuantumStatus();
+            const status = await simulationApi.getQuantumStates('current');
             return status;
         } catch (error) {
             console.error('Failed to get quantum status:', error);

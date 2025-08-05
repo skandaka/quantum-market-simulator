@@ -1,72 +1,60 @@
+// frontend/src/components/MarketSimulation.tsx
+
 import React, { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-    LineChart,
-    Line,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    Legend,
-    ResponsiveContainer,
-    Area,
-    AreaChart,
-    ReferenceLine,
+    LineChart, Line, AreaChart, Area, BarChart, Bar,
+    XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+    ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
+import {
+    TrendingUp,
+    TrendingDown,
+    DollarSign,
+    Calendar,
+    Info,
+    ArrowRight,
+    Activity,
+    AlertTriangle,
+    BarChart3,
+    Brain
+} from 'lucide-react';
+
 import { MarketPrediction } from '../types';
-import { ArrowTrendingUpIcon, ArrowTrendingDownIcon } from '@heroicons/react/24/outline';
 
 interface MarketSimulationProps {
     predictions: MarketPrediction[];
+    sentimentData?: Array<{
+        headline: string;
+        sentiment: string;
+        confidence: number;
+        market_impact_keywords?: string[];
+    }>;
 }
 
-const MarketSimulation: React.FC<MarketSimulationProps> = ({ predictions }) => {
+const MarketSimulation: React.FC<MarketSimulationProps> = ({
+                                                               predictions,
+                                                               sentimentData = []
+                                                           }) => {
     const [selectedAsset, setSelectedAsset] = useState(predictions[0]?.asset || '');
-    const [viewMode, setViewMode] = useState<'scenarios' | 'distribution'>('scenarios');
-    const [showConfidenceIntervals, setShowConfidenceIntervals] = useState(true);
+    const [viewMode, setViewMode] = useState<'summary' | 'scenarios' | 'distribution' | 'explanation'>('summary');
+    const [showTooltip, setShowTooltip] = useState<string | null>(null);
 
     const selectedPrediction = predictions.find(p => p.asset === selectedAsset);
 
-    const chartData = useMemo(() => {
+    const scenarioData = useMemo(() => {
         if (!selectedPrediction) return [];
 
-        const timePoints = selectedPrediction.predicted_scenarios[0].price_path.length;
+        const maxLength = Math.max(
+            ...selectedPrediction.predicted_scenarios.map(s => s.price_path.length)
+        );
+
         const data = [];
-
-        for (let t = 0; t < timePoints; t++) {
-            const point: any = {
-                time: t,
-                day: t === 0 ? 'Today' : `Day ${t}`,
-            };
-
-            // Calculate statistics across all scenarios
-            const pricesAtTime = selectedPrediction.predicted_scenarios.map(
-                s => s.price_path[t]
-            );
-
-            point.median = pricesAtTime.sort((a, b) => a - b)[Math.floor(pricesAtTime.length / 2)];
-            point.mean = pricesAtTime.reduce((a, b) => a + b, 0) / pricesAtTime.length;
-
-            // Add confidence intervals
-            if (selectedPrediction.confidence_intervals['95%']) {
-                const ci95 = selectedPrediction.confidence_intervals['95%'];
-                const range = ci95.upper - ci95.lower;
-                point.ci95Lower = point.median - (range * t / timePoints) / 2;
-                point.ci95Upper = point.median + (range * t / timePoints) / 2;
-            }
-
-            if (selectedPrediction.confidence_intervals['68%']) {
-                const ci68 = selectedPrediction.confidence_intervals['68%'];
-                const range = ci68.upper - ci68.lower;
-                point.ci68Lower = point.median - (range * t / timePoints) / 2;
-                point.ci68Upper = point.median + (range * t / timePoints) / 2;
-            }
-
-            // Add individual scenario lines (show top 5)
-            selectedPrediction.predicted_scenarios.slice(0, 5).forEach((scenario, idx) => {
+        for (let t = 0; t < maxLength; t++) {
+            const point: any = { time: t };
+            selectedPrediction.predicted_scenarios.forEach((scenario, idx) => {
                 point[`scenario${idx}`] = scenario.price_path[t];
             });
-
             data.push(point);
         }
 
@@ -83,11 +71,11 @@ const MarketSimulation: React.FC<MarketSimulationProps> = ({ predictions }) => {
         // Create histogram bins
         const min = Math.min(...finalPrices);
         const max = Math.max(...finalPrices);
-        const binCount = 20;
+        const binCount = 30;
         const binSize = (max - min) / binCount;
 
         const bins = Array(binCount).fill(0).map((_, i) => ({
-            price: min + i * binSize,
+            price: min + (i + 0.5) * binSize,
             count: 0,
             probability: 0,
         }));
@@ -101,7 +89,7 @@ const MarketSimulation: React.FC<MarketSimulationProps> = ({ predictions }) => {
         });
 
         bins.forEach(bin => {
-            bin.probability = bin.count / finalPrices.length;
+            bin.probability = (bin.count / finalPrices.length) * 100;
         });
 
         return bins;
@@ -109,11 +97,15 @@ const MarketSimulation: React.FC<MarketSimulationProps> = ({ predictions }) => {
 
     if (!selectedPrediction) return null;
 
-    const expectedReturnPercent = selectedPrediction.expected_return * 100;
-    const isPositive = expectedReturnPercent > 0;
+    const isPositive = selectedPrediction.expected_return > 0;
+    const returnPercent = Math.abs(selectedPrediction.expected_return * 100);
+    const currentPrice = selectedPrediction.current_price;
+    const futurePrice = currentPrice * (1 + selectedPrediction.expected_return);
+    const dollarChange = futurePrice - currentPrice;
 
     return (
         <div className="bg-gray-800 rounded-xl p-6 shadow-xl">
+            {/* Header with Asset Selector */}
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-semibold flex items-center">
                     <span className="mr-3">📈</span> Market Simulation Results
@@ -134,11 +126,21 @@ const MarketSimulation: React.FC<MarketSimulationProps> = ({ predictions }) => {
                     )}
                     <div className="flex bg-gray-700 rounded-lg p-1">
                         <button
+                            onClick={() => setViewMode('summary')}
+                            className={`px-4 py-2 rounded-md transition-all ${
+                                viewMode === 'summary'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            Summary
+                        </button>
+                        <button
                             onClick={() => setViewMode('scenarios')}
                             className={`px-4 py-2 rounded-md transition-all ${
                                 viewMode === 'scenarios'
-                                    ? 'bg-gray-600 text-white'
-                                    : 'text-gray-400'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-gray-400 hover:text-white'
                             }`}
                         >
                             Scenarios
@@ -147,250 +149,390 @@ const MarketSimulation: React.FC<MarketSimulationProps> = ({ predictions }) => {
                             onClick={() => setViewMode('distribution')}
                             className={`px-4 py-2 rounded-md transition-all ${
                                 viewMode === 'distribution'
-                                    ? 'bg-gray-600 text-white'
-                                    : 'text-gray-400'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-gray-400 hover:text-white'
                             }`}
                         >
                             Distribution
+                        </button>
+                        <button
+                            onClick={() => setViewMode('explanation')}
+                            className={`px-4 py-2 rounded-md transition-all ${
+                                viewMode === 'explanation'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            Explanation
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* Key Metrics */}
-            <div className="grid grid-cols-4 gap-4 mb-6">
-                <motion.div
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="bg-gray-700 rounded-lg p-4"
-                >
-                    <p className="text-sm text-gray-400">Current Price</p>
-                    <p className="text-2xl font-bold">${selectedPrediction.current_price.toFixed(2)}</p>
-                </motion.div>
+            <AnimatePresence mode="wait">
+                {viewMode === 'summary' && (
+                    <motion.div
+                        key="summary"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                    >
+                        {/* Clear Price Prediction Display */}
+                        <div className="bg-gradient-to-r from-gray-700 to-gray-600 rounded-xl p-6 mb-6">
+                            <h3 className="text-xl font-bold mb-4 text-center">
+                                {selectedAsset} Price Prediction
+                            </h3>
 
-                <motion.div
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.1 }}
-                    className="bg-gray-700 rounded-lg p-4"
-                >
-                    <p className="text-sm text-gray-400">Expected Return</p>
-                    <p className={`text-2xl font-bold flex items-center ${
-                        isPositive ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                        {isPositive ? (
-                            <ArrowTrendingUpIcon className="w-5 h-5 mr-1" />
-                        ) : (
-                            <ArrowTrendingDownIcon className="w-5 h-5 mr-1" />
-                        )}
-                        {expectedReturnPercent.toFixed(2)}%
-                    </p>
-                </motion.div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                {/* Current Price */}
+                                <div className="text-center">
+                                    <div className="text-gray-400 mb-2 flex items-center justify-center">
+                                        <DollarSign className="w-4 h-4 mr-1" />
+                                        Current Price
+                                    </div>
+                                    <div className="text-3xl font-bold text-white">
+                                        ${currentPrice.toFixed(2)}
+                                    </div>
+                                </div>
 
-                <motion.div
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                    className="bg-gray-700 rounded-lg p-4"
-                >
-                    <p className="text-sm text-gray-400">Volatility</p>
-                    <p className="text-2xl font-bold">
-                        {(selectedPrediction.volatility * 100).toFixed(1)}%
-                    </p>
-                </motion.div>
+                                {/* Arrow */}
+                                <div className="flex items-center justify-center">
+                                    <ArrowRight className={`w-8 h-8 ${isPositive ? 'text-green-400' : 'text-red-400'}`} />
+                                </div>
 
-                <motion.div
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.3 }}
-                    className="bg-gray-700 rounded-lg p-4"
-                >
-                    <p className="text-sm text-gray-400">Quantum Uncertainty</p>
-                    <p className="text-2xl font-bold text-purple-400">
-                        {(selectedPrediction.quantum_uncertainty * 100).toFixed(1)}%
-                    </p>
-                </motion.div>
-            </div>
+                                {/* Predicted Price */}
+                                <div className="text-center">
+                                    <div className="text-gray-400 mb-2 flex items-center justify-center">
+                                        <Calendar className="w-4 h-4 mr-1" />
+                                        Predicted Price (1 Week)
+                                        <button
+                                            onMouseEnter={() => setShowTooltip('predicted')}
+                                            onMouseLeave={() => setShowTooltip(null)}
+                                            className="ml-2 relative"
+                                        >
+                                            <Info className="w-4 h-4 text-gray-500 hover:text-gray-300" />
+                                            {showTooltip === 'predicted' && (
+                                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-gray-900 text-sm text-gray-300 p-3 rounded-lg shadow-lg z-10">
+                                                    This is our model's prediction for where the stock price will be in 1 week based on current news sentiment
+                                                </div>
+                                            )}
+                                        </button>
+                                    </div>
+                                    <div className={`text-3xl font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                                        ${futurePrice.toFixed(2)}
+                                    </div>
+                                    <div className={`text-lg mt-1 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                                        {isPositive ? '+' : ''}{dollarChange.toFixed(2)} ({isPositive ? '+' : ''}{returnPercent.toFixed(2)}%)
+                                    </div>
+                                </div>
+                            </div>
 
-            {/* Regime Probabilities */}
-            <div className="mb-6 bg-gray-700 rounded-lg p-4">
-                <p className="text-sm text-gray-400 mb-3">Market Regime Probabilities</p>
-                <div className="flex space-x-4">
-                    <div className="flex-1">
-                        <div className="flex justify-between mb-1">
-                            <span className="text-green-400">Bull Market</span>
-                            <span>{(selectedPrediction.regime_probabilities.bull * 100).toFixed(1)}%</span>
+                            {/* Plain English Explanation */}
+                            <div className="bg-gray-800/50 rounded-lg p-4 text-center">
+                                <p className="text-lg text-gray-200">
+                                    <span className="font-semibold">What this means:</span> If you own {selectedAsset} stock currently worth{' '}
+                                    <span className="text-white font-semibold">${currentPrice.toFixed(2)}</span>,
+                                    our model predicts it will be worth{' '}
+                                    <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                                        ${futurePrice.toFixed(2)}
+                                    </span>{' '}
+                                    in one week - a{' '}
+                                    <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                                        {isPositive ? 'gain' : 'loss'} of {returnPercent.toFixed(2)}%
+                                    </span>.
+                                </p>
+
+                                <div className="mt-4 flex items-center justify-center space-x-6">
+                                    <div className="flex items-center">
+                                        <div className="w-3 h-3 bg-blue-400 rounded-full mr-2"></div>
+                                        <span className="text-sm text-gray-400">
+                                            Confidence: {((1 - selectedPrediction.quantum_uncertainty) * 100).toFixed(0)}%
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <div className="w-3 h-3 bg-yellow-400 rounded-full mr-2"></div>
+                                        <span className="text-sm text-gray-400">
+                                            Volatility: {(selectedPrediction.volatility * 100).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div className="w-full bg-gray-600 rounded-full h-2">
-                            <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${selectedPrediction.regime_probabilities.bull * 100}%` }}
-                                className="bg-green-400 h-2 rounded-full"
-                            />
-                        </div>
-                    </div>
-                    <div className="flex-1">
-                        <div className="flex justify-between mb-1">
-                            <span className="text-yellow-400">Neutral</span>
-                            <span>{(selectedPrediction.regime_probabilities.neutral * 100).toFixed(1)}%</span>
-                        </div>
-                        <div className="w-full bg-gray-600 rounded-full h-2">
-                            <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${selectedPrediction.regime_probabilities.neutral * 100}%` }}
-                                className="bg-yellow-400 h-2 rounded-full"
-                            />
-                        </div>
-                    </div>
-                    <div className="flex-1">
-                        <div className="flex justify-between mb-1">
-                            <span className="text-red-400">Bear Market</span>
-                            <span>{(selectedPrediction.regime_probabilities.bear * 100).toFixed(1)}%</span>
-                        </div>
-                        <div className="w-full bg-gray-600 rounded-full h-2">
-                            <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${selectedPrediction.regime_probabilities.bear * 100}%` }}
-                                className="bg-red-400 h-2 rounded-full"
-                            />
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            {/* Chart */}
-            <div className="h-96">
-                {viewMode === 'scenarios' ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                            <XAxis dataKey="day" stroke="#9CA3AF" />
-                            <YAxis stroke="#9CA3AF" />
-                            <Tooltip
-                                contentStyle={{
-                                    backgroundColor: '#1F2937',
-                                    border: '1px solid #374151',
-                                    borderRadius: '8px',
-                                }}
-                            />
-                            <ReferenceLine
-                                y={selectedPrediction.current_price}
-                                stroke="#9CA3AF"
-                                strokeDasharray="5 5"
-                                label="Current"
-                            />
+                        {/* Key Metrics Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div className="bg-gray-700 rounded-lg p-4">
+                                <h4 className="text-sm text-gray-400 mb-2">Confidence Interval (95%)</h4>
+                                <div className="text-lg">
+                                    <span className="text-blue-400">
+                                        ${selectedPrediction.confidence_intervals["95%"].lower.toFixed(2)}
+                                    </span>
+                                    <span className="text-gray-400 mx-2">to</span>
+                                    <span className="text-blue-400">
+                                        ${selectedPrediction.confidence_intervals["95%"].upper.toFixed(2)}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">95% chance price will be in this range</p>
+                            </div>
 
-                            {/* Confidence Intervals */}
-                            {showConfidenceIntervals && (
-                                <>
-                                    <Area
-                                        type="monotone"
-                                        dataKey="ci95Upper"
-                                        stackId="1"
-                                        stroke="none"
-                                        fill="#3B82F6"
-                                        fillOpacity={0.1}
-                                    />
-                                    <Area
-                                        type="monotone"
-                                        dataKey="ci95Lower"
-                                        stackId="2"
-                                        stroke="none"
-                                        fill="#3B82F6"
-                                        fillOpacity={0.1}
-                                    />
-                                    <Area
-                                        type="monotone"
-                                        dataKey="ci68Upper"
-                                        stackId="3"
-                                        stroke="none"
-                                        fill="#8B5CF6"
-                                        fillOpacity={0.2}
-                                    />
-                                    <Area
-                                        type="monotone"
-                                        dataKey="ci68Lower"
-                                        stackId="4"
-                                        stroke="none"
-                                        fill="#8B5CF6"
-                                        fillOpacity={0.2}
-                                    />
-                                </>
-                            )}
+                            <div className="bg-gray-700 rounded-lg p-4">
+                                <h4 className="text-sm text-gray-400 mb-2">Market Regime</h4>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between">
+                                        <span className="text-sm">Bull</span>
+                                        <span className="text-green-400">
+                                            {(selectedPrediction.regime_probabilities.bull * 100).toFixed(0)}%
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-sm">Bear</span>
+                                        <span className="text-red-400">
+                                            {(selectedPrediction.regime_probabilities.bear * 100).toFixed(0)}%
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-sm">Neutral</span>
+                                        <span className="text-gray-400">
+                                            {(selectedPrediction.regime_probabilities.neutral * 100).toFixed(0)}%
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
 
-                            {/* Individual Scenarios */}
-                            {[0, 1, 2, 3, 4].map(idx => (
-                                <Line
-                                    key={idx}
-                                    type="monotone"
-                                    dataKey={`scenario${idx}`}
-                                    stroke={`hsl(${200 + idx * 30}, 70%, 50%)`}
-                                    strokeWidth={1}
-                                    dot={false}
-                                    opacity={0.5}
-                                />
-                            ))}
-
-                            {/* Median Line */}
-                            <Line
-                                type="monotone"
-                                dataKey="median"
-                                stroke="#10B981"
-                                strokeWidth={3}
-                                dot={false}
-                                name="Median Prediction"
-                            />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={distributionData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                            <XAxis
-                                dataKey="price"
-                                stroke="#9CA3AF"
-                                tickFormatter={(value) => `$${value.toFixed(0)}`}
-                            />
-                            <YAxis stroke="#9CA3AF" />
-                            <Tooltip
-                                contentStyle={{
-                                    backgroundColor: '#1F2937',
-                                    border: '1px solid #374151',
-                                    borderRadius: '8px',
-                                }}
-                                formatter={(value: number) => `${(value * 100).toFixed(1)}%`}
-                            />
-                            <Area
-                                type="monotone"
-                                dataKey="probability"
-                                stroke="#8B5CF6"
-                                fill="#8B5CF6"
-                                fillOpacity={0.6}
-                                name="Probability"
-                            />
-                            <ReferenceLine
-                                x={selectedPrediction.current_price}
-                                stroke="#9CA3AF"
-                                strokeDasharray="5 5"
-                                label="Current Price"
-                            />
-                        </AreaChart>
-                    </ResponsiveContainer>
+                            <div className="bg-gray-700 rounded-lg p-4">
+                                <h4 className="text-sm text-gray-400 mb-2">Quantum Metrics</h4>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between">
+                                        <span className="text-sm">Uncertainty</span>
+                                        <span className="text-purple-400">
+                                            {(selectedPrediction.quantum_uncertainty * 100).toFixed(0)}%
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-sm">Time Horizon</span>
+                                        <span className="text-blue-400">
+                                            30 days
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
                 )}
-            </div>
 
-            {/* Chart Controls */}
-            <div className="mt-4 flex justify-center">
-                <label className="flex items-center space-x-2 text-sm">
-                    <input
-                        type="checkbox"
-                        checked={showConfidenceIntervals}
-                        onChange={(e) => setShowConfidenceIntervals(e.target.checked)}
-                        className="rounded border-gray-600"
-                    />
-                    <span>Show Confidence Intervals</span>
-                </label>
-            </div>
+                {viewMode === 'scenarios' && (
+                    <motion.div
+                        key="scenarios"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                    >
+                        <div className="h-96">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={scenarioData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                    <XAxis
+                                        dataKey="time"
+                                        stroke="#9CA3AF"
+                                        label={{ value: "Days", position: "insideBottom", offset: -5 }}
+                                    />
+                                    <YAxis
+                                        stroke="#9CA3AF"
+                                        label={{ value: "Price ($)", angle: -90, position: "insideLeft" }}
+                                    />
+                                    <Tooltip
+                                        contentStyle={{
+                                            backgroundColor: '#1F2937',
+                                            border: '1px solid #374151',
+                                            borderRadius: '0.5rem'
+                                        }}
+                                        formatter={(value: number) => `${value.toFixed(2)}`}
+                                    />
+                                    <ReferenceLine
+                                        y={selectedPrediction.current_price}
+                                        stroke="#10B981"
+                                        strokeDasharray="5 5"
+                                        label="Current Price"
+                                    />
+                                    {selectedPrediction.predicted_scenarios.slice(0, 10).map((_, idx) => (
+                                        <Line
+                                            key={idx}
+                                            type="monotone"
+                                            dataKey={`scenario${idx}`}
+                                            stroke={`hsl(${idx * 36}, 70%, 50%)`}
+                                            strokeWidth={1}
+                                            dot={false}
+                                            opacity={0.6}
+                                        />
+                                    ))}
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <p className="text-sm text-gray-400 mt-4 text-center">
+                            Showing top 10 most likely price scenarios over the next 30 days
+                        </p>
+                    </motion.div>
+                )}
+
+                {viewMode === 'distribution' && (
+                    <motion.div
+                        key="distribution"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                    >
+                        <div className="mb-4">
+                            <h3 className="text-lg font-semibold mb-2">Price Probability Distribution</h3>
+                            <p className="text-sm text-gray-400">
+                                This shows how likely different price outcomes are in 1 week
+                            </p>
+                        </div>
+
+                        <div className="h-80">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={distributionData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                    <XAxis
+                                        dataKey="price"
+                                        stroke="#9CA3AF"
+                                        tickFormatter={(value) => `${value.toFixed(0)}`}
+                                        label={{ value: "Price ($)", position: "insideBottom", offset: -5 }}
+                                    />
+                                    <YAxis
+                                        stroke="#9CA3AF"
+                                        label={{ value: "Probability (%)", angle: -90, position: "insideLeft" }}
+                                    />
+                                    <Tooltip
+                                        contentStyle={{
+                                            backgroundColor: '#1F2937',
+                                            border: '1px solid #374151',
+                                            borderRadius: '0.5rem'
+                                        }}
+                                        formatter={(value: number) => `${value.toFixed(1)}%`}
+                                        labelFormatter={(value: number) => `Price: ${value.toFixed(2)}`}
+                                    />
+                                    <Bar dataKey="probability" fill="#3B82F6">
+                                        {distributionData.map((entry, index) => (
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={entry.price < selectedPrediction.current_price ? '#EF4444' : '#10B981'}
+                                            />
+                                        ))}
+                                    </Bar>
+                                    <ReferenceLine
+                                        x={selectedPrediction.current_price}
+                                        stroke="#FBBF24"
+                                        strokeWidth={2}
+                                        strokeDasharray="5 5"
+                                        label={{ value: "Current", position: "top" }}
+                                    />
+                                    <ReferenceLine
+                                        x={futurePrice}
+                                        stroke={isPositive ? '#10B981' : '#EF4444'}
+                                        strokeWidth={2}
+                                        label={{ value: "Expected", position: "top" }}
+                                    />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+
+                        <div className="mt-4 bg-gray-700/50 rounded-lg p-4">
+                            <h4 className="text-sm font-semibold text-blue-400 mb-2">How to Read This Chart</h4>
+                            <ul className="text-sm text-gray-300 space-y-1">
+                                <li>• <span className="text-green-400">Green bars</span> show prices above current price (gains)</li>
+                                <li>• <span className="text-red-400">Red bars</span> show prices below current price (losses)</li>
+                                <li>• Taller bars mean those prices are more likely</li>
+                                <li>• The <span className="text-yellow-400">yellow line</span> shows current price</li>
+                            </ul>
+                        </div>
+                    </motion.div>
+                )}
+
+                {viewMode === 'explanation' && (
+                    <motion.div
+                        key="explanation"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="space-y-6"
+                    >
+                        <div className="bg-gray-700 rounded-lg p-6">
+                            <h3 className="text-lg font-semibold mb-4 flex items-center">
+                                <Brain className="w-5 h-5 mr-2 text-purple-400" />
+                                How We Made This Prediction
+                            </h3>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <h4 className="text-sm font-semibold text-gray-400 mb-2">1. Sentiment Analysis</h4>
+                                    <p className="text-sm text-gray-300">
+                                        We analyzed {sentimentData.length} news articles about {selectedAsset}.
+                                        The overall sentiment was determined by looking for positive/negative keywords
+                                        and using AI to understand context.
+                                    </p>
+                                    {sentimentData.length > 0 && (
+                                        <div className="mt-2 max-h-40 overflow-y-auto">
+                                            {sentimentData.slice(0, 3).map((item, idx) => (
+                                                <div key={idx} className="bg-gray-800 rounded p-2 mt-2">
+                                                    <p className="text-xs text-gray-400">{item.headline}</p>
+                                                    <span className={`text-xs px-2 py-1 rounded mt-1 inline-block ${
+                                                        item.sentiment.includes('negative') ? 'bg-red-900 text-red-200' :
+                                                            item.sentiment.includes('positive') ? 'bg-green-900 text-green-200' :
+                                                                'bg-gray-600 text-gray-200'
+                                                    }`}>
+                                                        {item.sentiment}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <h4 className="text-sm font-semibold text-gray-400 mb-2">2. Market Impact Calculation</h4>
+                                    <p className="text-sm text-gray-300">
+                                        Based on the sentiment score and historical patterns, we calculated the expected
+                                        impact on {selectedAsset}'s price. {isPositive ? 'Positive' : 'Negative'} sentiment
+                                        typically leads to {isPositive ? 'upward' : 'downward'} price movement.
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <h4 className="text-sm font-semibold text-gray-400 mb-2">3. Scenario Generation</h4>
+                                    <p className="text-sm text-gray-300">
+                                        We generated {selectedPrediction.predicted_scenarios.length} different possible
+                                        price paths using quantum-enhanced simulations. Each scenario represents a
+                                        possible future based on current market conditions.
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <h4 className="text-sm font-semibold text-gray-400 mb-2">4. Final Prediction</h4>
+                                    <p className="text-sm text-gray-300">
+                                        We averaged all scenarios weighted by their probability to get our final
+                                        prediction of {isPositive ? '+' : ''}{returnPercent.toFixed(2)}% return
+                                        with {((1 - selectedPrediction.quantum_uncertainty) * 100).toFixed(0)}% confidence.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-yellow-900/20 border border-yellow-600 rounded-lg p-4">
+                            <div className="flex items-start">
+                                <AlertTriangle className="w-5 h-5 text-yellow-400 mr-3 mt-0.5" />
+                                <div>
+                                    <h4 className="text-yellow-400 font-semibold mb-1">Important Disclaimer</h4>
+                                    <p className="text-sm text-yellow-200">
+                                        These predictions are based on AI analysis of news sentiment and should not
+                                        be used as the sole basis for investment decisions. Real markets are influenced
+                                        by many factors beyond news sentiment.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };
