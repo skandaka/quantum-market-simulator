@@ -15,7 +15,7 @@ import uvicorn
 from .config import settings
 from .api import routes
 from .services.sentiment_analyzer import SentimentAnalyzer
-from .services.market_simulator import MarketSimulator
+from .services.unified_market_simulator import UnifiedMarketSimulator
 from .services.news_processor import NewsProcessor
 from .services.data_fetcher import MarketDataFetcher
 
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
 
             # Initialize standard components
             logger.info("📈 Initializing core components...")
-            app.state.market_simulator = MarketSimulator()
+            app.state.market_simulator = UnifiedMarketSimulator()
             app.state.sentiment_analyzer = SentimentAnalyzer()
             app.state.news_processor = NewsProcessor()
             app.state.data_fetcher = MarketDataFetcher()
