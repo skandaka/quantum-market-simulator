@@ -1,4 +1,6 @@
-import axios, { AxiosInstance } from 'axios';
+// frontend/src/services/api.ts - Enhanced API service with better error handling
+
+import axios, { AxiosInstance, AxiosError } from 'axios';
 import { SimulationRequest, SimulationResponse } from '../types';
 
 class EnhancedSimulationAPI {
@@ -6,16 +8,22 @@ class EnhancedSimulationAPI {
     private wsConnection: WebSocket | null = null;
 
     constructor() {
+        const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        console.log('API Base URL:', baseURL);
+
         this.client = axios.create({
-            baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+            baseURL,
             headers: {
                 'Content-Type': 'application/json',
             },
+            timeout: 30000, // 30 second timeout
         });
 
-        // Add request interceptor for auth if needed
+        // Add request interceptor for debugging and auth
         this.client.interceptors.request.use(
             (config) => {
+                console.log(`Making ${config.method?.toUpperCase()} request to: ${config.baseURL}${config.url}`);
+
                 // Add auth token if available
                 const token = localStorage.getItem('auth_token');
                 if (token) {
@@ -23,26 +31,119 @@ class EnhancedSimulationAPI {
                 }
                 return config;
             },
-            (error) => Promise.reject(error)
+            (error) => {
+                console.error('Request interceptor error:', error);
+                return Promise.reject(error);
+            }
         );
 
-        // Add response interceptor for error handling
+        // Add response interceptor for better error handling
         this.client.interceptors.response.use(
-            (response) => response,
-            (error) => {
-                if (error.response?.status === 401) {
-                    // Handle unauthorized
-                    console.error('Unauthorized access');
+            (response) => {
+                console.log(`Successful response from ${response.config.url}:`, response.status);
+                return response;
+            },
+            (error: AxiosError) => {
+                console.error('API Error:', {
+                    message: error.message,
+                    code: error.code,
+                    status: error.response?.status,
+                    statusText: error.response?.statusText,
+                    data: error.response?.data,
+                    url: error.config?.url
+                });
+
+                // Handle specific error cases
+                if (error.code === 'ECONNREFUSED') {
+                    error.message = 'Cannot connect to server. Please ensure the backend is running.';
+                } else if (error.code === 'NETWORK_ERROR' || error.code === 'ERR_NETWORK') {
+                    error.message = 'Network error. Please check your internet connection and backend server.';
+                } else if (error.response?.status === 404) {
+                    error.message = 'API endpoint not found. Please check the backend configuration.';
+                } else if (error.response?.status === 422) {
+                    const detail = (error.response.data as any)?.detail;
+                    if (Array.isArray(detail)) {
+                        error.message = `Validation error: ${detail.map(d => d.msg).join(', ')}`;
+                    } else {
+                        error.message = `Validation error: ${detail || 'Invalid request data'}`;
+                    }
                 }
+
                 return Promise.reject(error);
             }
         );
     }
 
-    // Standard simulation
+    // Health check with detailed diagnostics
+    async healthCheck(): Promise<any> {
+        try {
+            console.log('Performing health check...');
+            const response = await this.client.get('/health');
+            console.log('Health check successful:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('Health check failed:', error);
+            throw error;
+        }
+    }
+
+    // Standard simulation with enhanced error handling
     async runSimulation(request: SimulationRequest): Promise<SimulationResponse> {
-        const response = await this.client.post<SimulationResponse>('/api/v1/simulate', request);
-        return response.data;
+        try {
+            console.log('Sending simulation request:', request);
+
+            // Validate request before sending
+            if (!request.news_inputs || request.news_inputs.length === 0) {
+                throw new Error('At least one news input is required');
+            }
+
+            if (!request.target_assets || request.target_assets.length === 0) {
+                throw new Error('At least one target asset is required');
+            }
+
+            const response = await this.client.post<SimulationResponse>('/api/v1/simulate', request);
+            console.log('Simulation completed successfully');
+            return response.data;
+        } catch (error) {
+            console.error('Simulation request failed:', error);
+            throw error;
+        }
+    }
+
+    // Test connection method
+    async testConnection(): Promise<{ success: boolean; message: string; details?: any }> {
+        try {
+            console.log('Testing connection to backend...');
+
+            // Try health check first
+            const health = await this.healthCheck();
+
+            // Try getting supported assets
+            const assets = await this.client.get('/api/v1/supported-assets').catch(() => null);
+
+            // Try getting quantum status
+            const quantumStatus = await this.client.get('/api/v1/quantum-status').catch(() => null);
+
+            return {
+                success: true,
+                message: 'Connection successful',
+                details: {
+                    health,
+                    assetsEndpoint: assets ? 'working' : 'failed',
+                    quantumEndpoint: quantumStatus ? 'working' : 'failed'
+                }
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                message: error.message || 'Connection failed',
+                details: {
+                    error: error.code,
+                    status: error.response?.status,
+                    baseURL: this.client.defaults.baseURL
+                }
+            };
+        }
     }
 
     // Enhanced simulation with all features
@@ -147,8 +248,13 @@ class EnhancedSimulationAPI {
 
     // Get available assets
     async getAvailableAssets(): Promise<string[]> {
-        // Mock for now - would fetch from API
-        return ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'META', 'NVDA', 'BTC', 'ETH'];
+        try {
+            const response = await this.client.get('/api/v1/supported-assets');
+            return response.data.stocks || [];
+        } catch (error) {
+            console.warn('Failed to fetch available assets, using defaults');
+            return ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'META', 'NVDA', 'BTC-USD', 'ETH-USD'];
+        }
     }
 
     // Get market data
@@ -156,12 +262,6 @@ class EnhancedSimulationAPI {
         const response = await this.client.get('/api/v1/market-data', {
             params: { assets: assets.join(',') },
         });
-        return response.data;
-    }
-
-    // Health check
-    async healthCheck(): Promise<any> {
-        const response = await this.client.get('/health');
         return response.data;
     }
 

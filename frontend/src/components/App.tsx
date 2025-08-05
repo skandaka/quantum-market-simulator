@@ -1,6 +1,7 @@
 // frontend/src/components/App.tsx
 import React, { useState, useCallback, useEffect } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
+import DiagnosticPanel from './DiagnosticPanel';
 import {
     BeakerIcon,
     ChartBarIcon,
@@ -180,6 +181,17 @@ const App: React.FC = () => {
         setIsSimulating(true);
 
         try {
+            // First, check if backend is reachable
+            console.log('Checking backend connection...');
+            const healthCheck = await simulationApi.healthCheck().catch(() => null);
+
+            if (!healthCheck) {
+                toast.error('Backend server is not reachable. Please make sure the backend is running on http://localhost:8000');
+                return;
+            }
+
+            console.log('Backend is reachable, preparing simulation request...');
+
             const request = {
                 news_inputs: newsInputs.map(content => ({
                     content: content.trim(),
@@ -193,7 +205,11 @@ const App: React.FC = () => {
                 compare_with_classical: true
             };
 
+            console.log('Simulation request:', request);
+
             const response = await simulationApi.runSimulation(request);
+
+            console.log('Simulation response:', response);
             setSimulationResults(response);
 
             // Update quantum analysis for portfolio
@@ -223,14 +239,25 @@ const App: React.FC = () => {
                 icon: '🚀',
                 duration: 4000
             });
-        } catch (error) {
+        } catch (error: any) {
             console.error('Simulation error:', error);
-            toast.error('Simulation failed. Please try again.');
+
+            // Provide more specific error messages
+            if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
+                toast.error('Cannot connect to backend server. Please ensure the backend is running on http://localhost:8000');
+            } else if (error.response?.status === 422) {
+                toast.error(`Invalid request data: ${error.response.data.detail || 'Please check your input'}`);
+            } else if (error.response?.status === 500) {
+                toast.error(`Server error: ${error.response.data.detail || 'Internal server error'}`);
+            } else if (error.response?.data?.detail) {
+                toast.error(`Simulation failed: ${error.response.data.detail}`);
+            } else {
+                toast.error(`Simulation failed: ${error.message || 'Unknown error occurred'}`);
+            }
         } finally {
             setIsSimulating(false);
         }
     };
-
     // Handle portfolio upload
     const handlePortfolioLoaded = useCallback((portfolioData: PortfolioPosition[]) => {
         setPortfolio(portfolioData);
