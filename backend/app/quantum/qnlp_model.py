@@ -43,6 +43,7 @@ class QuantumNLPModel:
     def __init__(self, classiq_client: ClassiqClient):
         self.client = classiq_client
         self.auth_manager = classiq_auth
+        self._ready = False  # Add initialization status flag
 
         # Classical feature extractors
         self.tfidf = TfidfVectorizer(max_features=100, ngram_range=(1, 2))
@@ -63,6 +64,9 @@ class QuantumNLPModel:
         # Parameters for variational quantum circuit
         self.theta = np.random.randn(self.num_layers, self.num_qubits, 3) * 0.1
 
+    def is_ready(self) -> bool:
+        """Check if the model is ready for inference"""
+        return self._ready and self.tokenizer is not None and self.embedding_model is not None
     async def initialize(self):
         """Load classical models"""
         try:

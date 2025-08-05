@@ -1,3 +1,4 @@
+// frontend/src/components/App.tsx
 import React, { useState, useCallback, useEffect } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import {
@@ -7,10 +8,12 @@ import {
     AdjustmentsHorizontalIcon,
     SparklesIcon,
     PlayIcon,
-    DocumentTextIcon
+    DocumentTextIcon,
+    ArrowPathIcon
 } from '@heroicons/react/24/outline';
+import { motion, AnimatePresence } from 'framer-motion';
 
-// Import our quantum visualization components
+// Import components
 import {
     BlochSphereNetwork,
     WavefunctionCollapse,
@@ -18,7 +21,6 @@ import {
     QuantumCircuitLiveView
 } from './QuantumVisualizations';
 
-// Import portfolio components
 import {
     PortfolioUpload,
     QuantumPortfolioRiskAssessment,
@@ -26,8 +28,12 @@ import {
     RealTimePortfolioMonitoring
 } from './PortfolioIntegration';
 
-// Import simulation API
-import * as simulationApi from '../services/simulationApi';
+import MarketSimulation from './MarketSimulation';
+import PredictionExplanation from './PredictionExplanation';
+import ProbabilityDistribution from './ProbabilityDistribution';
+
+// Import API
+import { simulationApi } from '../services/api';
 
 // Types
 interface PortfolioPosition {
@@ -66,14 +72,24 @@ interface MarketDataPoint {
     timestamp: string;
 }
 
-const EnhancedApp: React.FC = () => {
+interface SimulationResults {
+    request_id: string;
+    timestamp: string;
+    news_analysis: any[];
+    market_predictions: any[];
+    quantum_metrics?: any;
+    execution_time_seconds: number;
+    warnings: string[];
+}
+
+const App: React.FC = () => {
     // Core simulation state
     const [activeTab, setActiveTab] = useState('simulator');
     const [newsInputs, setNewsInputs] = useState(['', '', '']);
     const [selectedAssets, setSelectedAssets] = useState(['AAPL', 'MSFT', 'GOOGL']);
-    const [simulationMethod, setSimulationMethod] = useState('quantum_monte_carlo');
+    const [simulationMethod, setSimulationMethod] = useState('hybrid_qml');
     const [isSimulating, setIsSimulating] = useState(false);
-    const [simulationResults, setSimulationResults] = useState<any>(null);
+    const [simulationResults, setSimulationResults] = useState<SimulationResults | null>(null);
     const [portfolio, setPortfolio] = useState<PortfolioPosition[]>([]);
 
     // Advanced settings
@@ -86,6 +102,8 @@ const EnhancedApp: React.FC = () => {
     const [noiseMitigation, setNoiseMitigation] = useState(true);
     const [circuitOptimization, setCircuitOptimization] = useState(true);
     const [quantumAdvantageMode, setQuantumAdvantageMode] = useState(true);
+    const [timeHorizon, setTimeHorizon] = useState(7);
+    const [numScenarios, setNumScenarios] = useState(1000);
 
     // Visualization state
     const [quantumStates, setQuantumStates] = useState<QuantumState[]>([]);
@@ -152,8 +170,8 @@ const EnhancedApp: React.FC = () => {
         ]);
     }, []);
 
-    // Run enhanced simulation
-    const runEnhancedSimulation = async () => {
+    // Run simulation
+    const runSimulation = async () => {
         if (newsInputs.some(input => !input.trim())) {
             toast.error('Please enter news content');
             return;
@@ -169,16 +187,13 @@ const EnhancedApp: React.FC = () => {
                 })),
                 target_assets: selectedAssets,
                 simulation_method: simulationMethod as any,
-                enhanced_features: {
-                    quantum_layers: quantumLayers,
-                    noise_mitigation: noiseMitigation,
-                    circuit_optimization: circuitOptimization,
-                    quantum_advantage_mode: quantumAdvantageMode
-                },
-                portfolio_data: portfolio
+                time_horizon_days: timeHorizon,
+                num_scenarios: numScenarios,
+                include_quantum_metrics: true,
+                compare_with_classical: true
             };
 
-            const response = await simulationApi.runEnhancedSimulation(request);
+            const response = await simulationApi.runSimulation(request);
             setSimulationResults(response);
 
             // Update quantum analysis for portfolio
@@ -239,9 +254,9 @@ const EnhancedApp: React.FC = () => {
     // Tab navigation
     const tabs = [
         { id: 'simulator', label: 'Quantum Simulator', icon: BeakerIcon },
-        { id: 'visualization', label: 'Visualizations', icon: ChartBarIcon },
-        { id: 'portfolio', label: 'Portfolio Analysis', icon: CpuChipIcon },
-        { id: 'technical', label: 'Technical Details', icon: AdjustmentsHorizontalIcon }
+        { id: 'results', label: 'Results & Analysis', icon: ChartBarIcon },
+        { id: 'visualization', label: 'Visualizations', icon: CpuChipIcon },
+        { id: 'portfolio', label: 'Portfolio Analysis', icon: AdjustmentsHorizontalIcon }
     ];
 
     return (
@@ -260,12 +275,12 @@ const EnhancedApp: React.FC = () => {
                         </div>
                         <div className="flex items-center space-x-4">
                             <div className="text-sm text-gray-400">
-                                Powered by Classiq
+                                Advanced Market Analysis
                             </div>
                             {simulationResults && (
                                 <div className="flex items-center space-x-2 text-sm">
                                     <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                                    <span className="text-green-400">Quantum Advantage Active</span>
+                                    <span className="text-green-400">Analysis Complete</span>
                                 </div>
                             )}
                         </div>
@@ -352,58 +367,37 @@ const EnhancedApp: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Advanced Settings */}
+                        {/* Simulation Settings */}
                         <div className="bg-gray-800 rounded-lg p-6">
-                            <h3 className="text-lg font-semibold text-white mb-4">Advanced Quantum Settings</h3>
+                            <h3 className="text-lg font-semibold text-white mb-4">Simulation Settings</h3>
                             <div className="grid grid-cols-2 gap-6">
                                 <div>
-                                    <h4 className="text-md font-medium text-gray-300 mb-3">Quantum Layers</h4>
-                                    {Object.entries(quantumLayers).map(([key, value]) => (
-                                        <label key={key} className="flex items-center space-x-2 mb-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={value}
-                                                onChange={(e) => setQuantumLayers({
-                                                    ...quantumLayers,
-                                                    [key]: e.target.checked
-                                                })}
-                                                className="rounded bg-gray-700 border-gray-600 text-purple-600"
-                                            />
-                                            <span className="text-white capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
-                                        </label>
-                                    ))}
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Simulation Method
+                                    </label>
+                                    <select
+                                        value={simulationMethod}
+                                        onChange={(e) => setSimulationMethod(e.target.value)}
+                                        className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 border border-gray-600 focus:ring-2 focus:ring-purple-500"
+                                    >
+                                        <option value="hybrid_qml">Hybrid Quantum-ML</option>
+                                        <option value="quantum_monte_carlo">Quantum Monte Carlo</option>
+                                        <option value="quantum_walk">Quantum Walk</option>
+                                        <option value="classical_baseline">Classical Baseline</option>
+                                    </select>
                                 </div>
                                 <div>
-                                    <h4 className="text-md font-medium text-gray-300 mb-3">Optimization</h4>
-                                    <div className="space-y-2">
-                                        <label className="flex items-center space-x-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={noiseMitigation}
-                                                onChange={(e) => setNoiseMitigation(e.target.checked)}
-                                                className="rounded bg-gray-700 border-gray-600 text-purple-600"
-                                            />
-                                            <span className="text-white">Noise Mitigation</span>
-                                        </label>
-                                        <label className="flex items-center space-x-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={circuitOptimization}
-                                                onChange={(e) => setCircuitOptimization(e.target.checked)}
-                                                className="rounded bg-gray-700 border-gray-600 text-purple-600"
-                                            />
-                                            <span className="text-white">Circuit Optimization</span>
-                                        </label>
-                                        <label className="flex items-center space-x-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={quantumAdvantageMode}
-                                                onChange={(e) => setQuantumAdvantageMode(e.target.checked)}
-                                                className="rounded bg-gray-700 border-gray-600 text-purple-600"
-                                            />
-                                            <span className="text-white">Quantum Advantage Mode</span>
-                                        </label>
-                                    </div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Time Horizon (days)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={timeHorizon}
+                                        onChange={(e) => setTimeHorizon(parseInt(e.target.value))}
+                                        min="1"
+                                        max="30"
+                                        className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 border border-gray-600 focus:ring-2 focus:ring-purple-500"
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -411,14 +405,14 @@ const EnhancedApp: React.FC = () => {
                         {/* Run Simulation */}
                         <div className="text-center">
                             <button
-                                onClick={runEnhancedSimulation}
+                                onClick={runSimulation}
                                 disabled={isSimulating}
                                 className="inline-flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isSimulating ? (
                                     <>
-                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-                                        <span>Running Quantum Simulation...</span>
+                                        <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                                        <span>Running Simulation...</span>
                                     </>
                                 ) : (
                                     <>
@@ -428,16 +422,26 @@ const EnhancedApp: React.FC = () => {
                                 )}
                             </button>
                         </div>
+                    </div>
+                )}
 
-                        {/* Results */}
-                        {simulationResults && (
-                            <div className="bg-gray-800 rounded-lg p-6">
-                                <h3 className="text-lg font-semibold text-white mb-4">Simulation Results</h3>
-                                <pre className="bg-gray-900 rounded p-4 text-sm text-gray-300 overflow-auto">
-                                    {JSON.stringify(simulationResults, null, 2)}
-                                </pre>
+                {/* Results Tab */}
+                {activeTab === 'results' && simulationResults && (
+                    <div className="space-y-8">
+                        <MarketSimulation
+                            predictions={simulationResults.market_predictions}
+                            sentimentData={simulationResults.news_analysis}
+                        />
+
+                        {simulationResults.market_predictions.map((prediction, index) => (
+                            <div key={index} className="space-y-6">
+                                <PredictionExplanation
+                                    prediction={prediction}
+                                    sentimentData={simulationResults.news_analysis}
+                                />
+                                <ProbabilityDistribution prediction={prediction} />
                             </div>
-                        )}
+                        ))}
                     </div>
                 )}
 
@@ -532,58 +536,9 @@ const EnhancedApp: React.FC = () => {
                         )}
                     </div>
                 )}
-
-                {/* Technical Details Tab */}
-                {activeTab === 'technical' && (
-                    <div className="space-y-8">
-                        <div className="bg-gray-800 rounded-lg p-6">
-                            <h2 className="text-2xl font-bold text-white mb-6">Technical Implementation</h2>
-                            
-                            <div className="space-y-6">
-                                <div>
-                                    <h3 className="text-lg font-semibold text-white mb-3">Quantum Algorithms</h3>
-                                    <ul className="text-gray-300 space-y-2">
-                                        <li>• Quantum Monte Carlo for price simulation</li>
-                                        <li>• Quantum Machine Learning for sentiment analysis</li>
-                                        <li>• Quantum Principal Component Analysis for risk assessment</li>
-                                        <li>• Quantum Approximate Optimization Algorithm for portfolio optimization</li>
-                                    </ul>
-                                </div>
-
-                                <div>
-                                    <h3 className="text-lg font-semibold text-white mb-3">Hardware Integration</h3>
-                                    <ul className="text-gray-300 space-y-2">
-                                        <li>• Classiq quantum computing platform</li>
-                                        <li>• IBM Quantum hardware backend support</li>
-                                        <li>• Quantum circuit optimization and compilation</li>
-                                        <li>• Error mitigation and noise handling</li>
-                                    </ul>
-                                </div>
-
-                                <div>
-                                    <h3 className="text-lg font-semibold text-white mb-3">Performance Metrics</h3>
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="bg-gray-700 rounded p-4">
-                                            <div className="text-sm text-gray-400">Quantum Volume</div>
-                                            <div className="text-xl font-bold text-purple-400">1024</div>
-                                        </div>
-                                        <div className="bg-gray-700 rounded p-4">
-                                            <div className="text-sm text-gray-400">Circuit Depth</div>
-                                            <div className="text-xl font-bold text-blue-400">45</div>
-                                        </div>
-                                        <div className="bg-gray-700 rounded p-4">
-                                            <div className="text-sm text-gray-400">Qubits Used</div>
-                                            <div className="text-xl font-bold text-green-400">12</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </main>
         </div>
     );
 };
 
-export default EnhancedApp;
+export default App;

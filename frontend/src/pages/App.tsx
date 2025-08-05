@@ -1,17 +1,15 @@
+// frontend/src/pages/App.tsx
+import React from 'react';
 import { Provider } from 'react-redux';
 import { Toaster } from 'react-hot-toast';
 import { store } from '../store';
-import SimulatorPage from './SimulatorPage';
-import Header from '../components/Header';
+import MainApp from '../components/App';
 
 function App() {
     return (
         <Provider store={store}>
             <div className="min-h-screen bg-gray-900 text-white">
-                <Header />
-                <main className="container mx-auto px-4 py-8">
-                    <SimulatorPage />
-                </main>
+                <MainApp />
                 <Toaster
                     position="top-right"
                     toastOptions={{
