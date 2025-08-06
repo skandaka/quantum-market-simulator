@@ -17,9 +17,9 @@ def test_simulation():
             }
         ],
         "target_assets": ["AAPL"],
-        "simulation_method": "hybrid_qml",
+        "simulation_method": "quantum",  # Force quantum method
         "time_horizon_days": 7,
-        "num_scenarios": 1000
+        "num_scenarios": 100  # Smaller number for faster quantum execution
     }
     
     try:

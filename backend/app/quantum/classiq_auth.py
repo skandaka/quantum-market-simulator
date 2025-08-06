@@ -32,13 +32,15 @@ except ImportError as e:
 @dataclass
 class ClassiqConfig:
     """Configuration for Classiq quantum backend"""
-    api_key: Optional[str] = None
     backend_provider: str = "IBM"
     max_qubits: int = 10
     optimization_level: int = 2
     shots: int = 1024
     use_hardware: bool = False
     timeout: int = 300  # 5 minutes
+    # Login credentials (optional - otherwise uses browser auth)
+    username: Optional[str] = None
+    password: Optional[str] = None
 
 
 class ClassiqAuthManager:
@@ -53,8 +55,9 @@ class ClassiqAuthManager:
 
     def _load_config(self):
         """Load configuration from environment"""
-        # Load API key
-        self.config.api_key = os.getenv("CLASSIQ_API_KEY")
+        # Load optional login credentials  
+        self.config.username = os.getenv("CLASSIQ_USERNAME")
+        self.config.password = os.getenv("CLASSIQ_PASSWORD")
 
         # Load other settings
         self.config.backend_provider = os.getenv("CLASSIQ_BACKEND_PROVIDER", "IBM")
@@ -77,18 +80,20 @@ class ClassiqAuthManager:
             return
 
         try:
-            if self.config.api_key and self.config.api_key != "your_actual_api_key_here":
-                # Use API key authentication in a separate thread
-                logger.info("Authenticating with Classiq using API key...")
-                await asyncio.to_thread(authenticate, {"api_key": self.config.api_key})
+            if self.config.username and self.config.password:
+                # Use credential-based authentication
+                logger.info("Authenticating with Classiq using credentials...")
+                await asyncio.to_thread(authenticate, 
+                                      username=self.config.username, 
+                                      password=self.config.password)
                 self._authenticated = True
-                logger.info("✅ Classiq authentication successful with API Key")
+                logger.info("✅ Classiq authentication successful with credentials")
             else:
-                # Use browser-based authentication in a separate thread
-                logger.warning("No valid API key found. Attempting browser-based authentication.")
+                # Use browser-based authentication (interactive)
+                logger.info("Attempting Classiq browser-based authentication...")
                 await asyncio.to_thread(authenticate)
                 self._authenticated = True
-                logger.info("✅ Classiq authentication successful via browser.")
+                logger.info("✅ Classiq authentication successful via browser")
 
             self._initialized = True
 

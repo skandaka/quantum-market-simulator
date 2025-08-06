@@ -539,9 +539,63 @@ const App: React.FC = () => {
 
                                         {/* Try to render the advanced components in a safe way */}
                                         <div className="mt-8">
-                                            <div className="text-lg font-semibold text-white mb-4">Advanced Analysis</div>
-                                            <div className="text-gray-400">
-                                                Note: Advanced visualizations and explanations will be restored once component issues are resolved.
+                                            <div className="text-lg font-semibold text-white mb-4">🔬 Quantum Analysis</div>
+                                            
+                                            {simulationResults.quantum_metrics ? (
+                                                <div className="bg-gray-800 rounded-lg p-6">
+                                                    <h3 className="text-xl font-semibold text-white mb-4">⚛️ Quantum Metrics</h3>
+                                                    
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                                        <div className="text-center">
+                                                            <div className="text-2xl font-bold text-blue-400">
+                                                                {simulationResults.quantum_metrics.quantum_advantage?.toFixed(2)}x
+                                                            </div>
+                                                            <div className="text-sm text-gray-400">Quantum Advantage</div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className="text-2xl font-bold text-purple-400">
+                                                                {(simulationResults.quantum_metrics.entanglement_score * 100)?.toFixed(1)}%
+                                                            </div>
+                                                            <div className="text-sm text-gray-400">Entanglement</div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className="text-2xl font-bold text-green-400">
+                                                                {simulationResults.quantum_metrics.num_qubits}
+                                                            </div>
+                                                            <div className="text-sm text-gray-400">Qubits Used</div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className="text-2xl font-bold text-yellow-400">
+                                                                {(simulationResults.quantum_metrics.gate_fidelity * 100)?.toFixed(1)}%
+                                                            </div>
+                                                            <div className="text-sm text-gray-400">Gate Fidelity</div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {simulationResults.quantum_metrics.execution_time && (
+                                                        <div className="text-sm text-gray-400">
+                                                            Quantum execution time: {simulationResults.quantum_metrics.execution_time.toFixed(3)}s
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="bg-gray-800 rounded-lg p-6">
+                                                    <div className="text-gray-400">
+                                                        Quantum metrics not available for this simulation method.
+                                                        Try using "quantum" or "hybrid_qml" simulation method.
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Try to safely render the MarketSimulation component */}
+                                            <div className="mt-8">
+                                                <div className="text-lg font-semibold text-white mb-4">📊 Advanced Visualizations</div>
+                                                <div className="bg-gray-800 rounded-lg p-6">
+                                                    <div className="text-gray-400">
+                                                        Advanced visualizations temporarily disabled for stability.
+                                                        Basic results are shown above.
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </>

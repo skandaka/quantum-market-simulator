@@ -280,6 +280,37 @@ class UnifiedMarketSimulator:
 
         scenarios = []
 
+        # Use quantum simulation if available and requested
+        if method in ["quantum", "hybrid_qml"] and self.quantum_simulator:
+            try:
+                logger.info(f"🔬 Running quantum simulation for {asset} with {num_scenarios} scenarios")
+                
+                # Prepare initial state for quantum simulation
+                initial_state = {
+                    "price": current_price,
+                    "volatility": base_volatility,
+                    "expected_return": expected_return
+                }
+                
+                # Generate quantum scenarios
+                quantum_scenarios = await self.quantum_simulator.simulate_market_scenarios(
+                    initial_state=initial_state,
+                    sentiment_impact=sentiment_impact,
+                    time_horizon=time_horizon,
+                    num_scenarios=num_scenarios
+                )
+                
+                logger.info(f"✅ Quantum simulation completed, generated {len(quantum_scenarios)} scenarios")
+                return quantum_scenarios
+                
+            except Exception as e:
+                logger.error(f"❌ Quantum simulation failed: {e}")
+                logger.info("🔄 Falling back to classical simulation")
+                # Fall through to classical simulation
+
+        # Classical simulation fallback
+        logger.info(f"📊 Running classical simulation for {asset} with {num_scenarios} scenarios")
+
         for i in range(num_scenarios):
             price_path = [current_price]
             returns_path = []

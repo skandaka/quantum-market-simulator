@@ -18,6 +18,7 @@ from .services.sentiment_analyzer import SentimentAnalyzer
 from .services.unified_market_simulator import UnifiedMarketSimulator
 from .services.news_processor import NewsProcessor
 from .services.data_fetcher import MarketDataFetcher
+from .quantum.classiq_client import ClassiqClient
 
 # Configure logging
 logging.basicConfig(
@@ -42,9 +43,32 @@ async def lifespan(app: FastAPI):
             logger.info("🚀 Starting Quantum Market Simulator...")
             logger.info("=" * 50)
 
-            # Initialize standard components
+            # Initialize quantum components
+            logger.info("🔬 Initializing quantum components...")
+            app.state.classiq_client = ClassiqClient()
+            
+            if settings.enable_quantum:
+                try:
+                    logger.info("⚛️  Authenticating with Classiq platform...")
+                    await app.state.classiq_client.initialize()
+                    
+                    if app.state.classiq_client.is_ready():
+                        logger.info("✅ Classiq quantum backend ready and authenticated")
+                    else:
+                        logger.warning("⚠️  Classiq client not ready after initialization")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Quantum backend initialization failed: {e}", exc_info=True)
+            else:
+                logger.info("📋 Quantum features disabled by configuration")
+
+            # Initialize standard components with quantum support
             logger.info("📈 Initializing core components...")
-            app.state.market_simulator = UnifiedMarketSimulator()
+            quantum_client = app.state.classiq_client if settings.enable_quantum and app.state.classiq_client.is_ready() else None
+            
+            logger.info(f"🎯 Creating UnifiedMarketSimulator with quantum_client={'enabled' if quantum_client else 'disabled'}")
+            app.state.market_simulator = UnifiedMarketSimulator(classiq_client=quantum_client)
+            
             app.state.sentiment_analyzer = SentimentAnalyzer()
             app.state.news_processor = NewsProcessor()
             app.state.data_fetcher = MarketDataFetcher()

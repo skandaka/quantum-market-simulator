@@ -38,10 +38,9 @@ class Settings(PydanticBaseSettings):
     redis_url: Optional[str] = os.getenv("REDIS_URL", "redis://localhost:6379")
 
     # Quantum settings
-    classiq_api_key: str = os.getenv("CLASSIQ_API_KEY", "")
     quantum_backend: str = os.getenv("QUANTUM_BACKEND", "simulator")
     max_qubits: int = 10
-    enable_quantum: bool = os.getenv("ENABLE_QUANTUM", "false").lower() == "true"
+    enable_quantum: bool = os.getenv("ENABLE_QUANTUM", "true").lower() == "true"  # Enable by default
 
     # API Keys
     alpha_vantage_api_key: Optional[str] = os.getenv("ALPHA_VANTAGE_API_KEY")
