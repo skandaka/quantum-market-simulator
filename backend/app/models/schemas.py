@@ -1,24 +1,13 @@
-"""Pydantic models for request/response schemas"""
+# backend/app/models/schemas.py
 
-from typing import Optional, List, Dict, Any, Union
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, Field, validator, HttpUrl
-import numpy as np
-
-
-class NewsSourceType(str, Enum):
-    """Supported news source types"""
-    HEADLINE = "headline"
-    TWEET = "tweet"
-    ARTICLE = "article"
-    SEC_FILING = "sec_filing"
-    EARNINGS_CALL = "earnings_call"
-    PRESS_RELEASE = "press_release"
 
 
 class SentimentType(str, Enum):
-    """Sentiment classification types"""
+    """Enhanced sentiment types"""
     VERY_NEGATIVE = "very_negative"
     NEGATIVE = "negative"
     NEUTRAL = "neutral"
@@ -26,146 +15,190 @@ class SentimentType(str, Enum):
     VERY_POSITIVE = "very_positive"
 
 
-class MarketAsset(str, Enum):
-    """Supported market assets"""
-    STOCK = "stock"
-    CRYPTO = "crypto"
-    FOREX = "forex"
-    COMMODITY = "commodity"
-    INDEX = "index"
+class NewsSourceType(str, Enum):
+    """News source types"""
+    HEADLINE = "headline"
+    ARTICLE = "article"
+    TWEET = "tweet"
+    SEC_FILING = "sec_filing"
+    PDF = "pdf"
+    URL = "url"
 
 
-class SimulationMethod(str, Enum):
-    """Simulation methods available"""
-    QUANTUM_MONTE_CARLO = "quantum_monte_carlo"
-    QUANTUM_WALK = "quantum_walk"
-    HYBRID_QML = "hybrid_qml"
-    CLASSICAL_BASELINE = "classical_baseline"
-
-
-# Request Models
 class NewsInput(BaseModel):
-    """News input for analysis"""
-    content: str = Field(..., min_length=10, max_length=10000)
-    source_type: NewsSourceType = NewsSourceType.HEADLINE
-    source_url: Optional[HttpUrl] = None
-    published_at: Optional[datetime] = None
-    author: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = {}
-
-    @validator('content')
-    def clean_content(cls, v):
-        # Remove excessive whitespace
-        return ' '.join(v.split())
-
-
-class SimulationRequest(BaseModel):
-    """Market simulation request"""
-    news_inputs: List[NewsInput]
-    target_assets: List[str] = Field(..., min_items=1, max_items=10)
-    asset_type: MarketAsset = MarketAsset.STOCK
-    simulation_method: SimulationMethod = SimulationMethod.HYBRID_QML
-    time_horizon_days: int = Field(default=7, ge=1, le=30)
-    num_scenarios: int = Field(default=1000, ge=100, le=10000)
-    include_quantum_metrics: bool = True
-    compare_with_classical: bool = True
-
-    @validator('target_assets')
-    def validate_assets(cls, v):
-        # Ensure unique assets
-        return list(set(v))
-
-
-class BacktestRequest(BaseModel):
-    """Backtesting request"""
-    historical_news: List[NewsInput]
-    asset: str
-    start_date: datetime
-    end_date: datetime
-    initial_capital: float = Field(default=100000, gt=0)
-    position_size: float = Field(default=0.1, gt=0, le=1)
-
-
-# Response Models
-class QuantumMetrics(BaseModel):
-    """Quantum computation metrics"""
-    circuit_depth: int
-    num_qubits: int
-    quantum_volume: float
-    entanglement_measure: float
-    execution_time_ms: float
-    hardware_backend: str
-    success_probability: float
+    """Enhanced news input with multiple sources"""
+    content: str = Field(..., description="News content text")
+    source_type: str = Field(default="headline", description="Type: headline, url, pdf")
+    source_url: Optional[str] = Field(None, description="Source URL if applicable")
+    file_name: Optional[str] = Field(None, description="File name if PDF")
 
 
 class SentimentAnalysis(BaseModel):
-    """Sentiment analysis results"""
+    """Enhanced sentiment analysis result"""
     sentiment: SentimentType
-    confidence: float = Field(..., ge=0, le=1)
-    quantum_sentiment_vector: List[float]
-    classical_sentiment_score: float
-    entities_detected: List[Dict[str, str]]
-    key_phrases: List[str]
-    market_impact_keywords: List[str]
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    quantum_sentiment_vector: List[float] = Field(default_factory=list)
+    classical_sentiment_score: float = Field(default=0.0, ge=-1.0, le=1.0)
+    entities_detected: List[Dict[str, Any]] = Field(default_factory=list)
+    key_phrases: List[str] = Field(default_factory=list)
+    market_impact_keywords: List[str] = Field(default_factory=list)
+    crisis_indicators: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        use_enum_values = True
 
 
 class PriceScenario(BaseModel):
-    """Single price scenario"""
+    """Price scenario for simulation"""
     scenario_id: int
     price_path: List[float]
     returns_path: List[float]
     volatility_path: List[float]
-    probability_weight: float
+    probability_weight: float = Field(..., ge=0.0, le=1.0)
+    
+    class Config:
+        json_encoders = {
+            float: lambda v: round(v, 6) if v is not None else None
+        }
 
 
 class MarketPrediction(BaseModel):
-    """Market prediction for an asset"""
+    """Enhanced market prediction with detailed analysis"""
     asset: str
     current_price: float
+    expected_return: float = Field(..., ge=-1.0, le=1.0)
+    volatility: float = Field(..., ge=0.0, le=2.0)
+    confidence: float = Field(..., ge=0.0, le=1.0)
     predicted_scenarios: List[PriceScenario]
-    expected_return: float
-    volatility: float
-    confidence_intervals: Dict[str, Dict[str, float]]  # {confidence_level: {lower, upper}}
-    quantum_uncertainty: float
-    regime_probabilities: Dict[str, float]  # bull/bear/neutral probabilities
+    confidence_intervals: Dict[str, Dict[str, float]]
+    time_horizon_days: int
+    sentiment_impact: float = Field(default=0.0, ge=-1.0, le=1.0)
+    prediction_method: str
+    explanation: Optional[Dict[str, Any]] = None
+    warnings: List[str] = Field(default_factory=list)
+    is_crisis: Optional[bool] = None
+    crisis_severity: Optional[float] = None
+    
+    class Config:
+        json_encoders = {
+            float: lambda v: round(v, 6) if v is not None else None
+        }
+
+
+class QuantumMetrics(BaseModel):
+    """Quantum computation metrics"""
+    quantum_advantage: float = Field(default=1.0, description="Speedup vs classical")
+    entanglement_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    coherence_time: float = Field(default=0.0, description="Microseconds")
+    gate_fidelity: float = Field(default=0.99, ge=0.0, le=1.0)
+    circuit_depth: int = Field(default=1, ge=1)
+    num_qubits: int = Field(default=1, ge=1)
+    execution_time: float = Field(default=0.0, description="Seconds")
+    classical_comparison: Optional[Dict[str, float]] = None
+
+
+class SimulationRequest(BaseModel):
+    """Enhanced simulation request"""
+    news_inputs: List[NewsInput] = Field(..., min_items=1, max_items=10)
+    target_assets: List[str] = Field(..., min_items=1, max_items=10)
+    simulation_method: str = Field(
+        default="hybrid_qml",
+        description="Method: hybrid_qml, quantum_monte_carlo, quantum_walk, classical_baseline"
+    )
+    time_horizon_days: int = Field(default=7, ge=1, le=30)
+    num_scenarios: int = Field(default=1000, ge=100, le=5000)
+    compare_with_classical: bool = Field(default=True)
+    include_portfolio_optimization: bool = Field(default=False)
+    risk_tolerance: float = Field(default=0.5, ge=0.0, le=1.0)
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "news_inputs": [
+                    {
+                        "content": "Apple reports record breaking quarterly earnings",
+                        "source_type": "headline"
+                    }
+                ],
+                "target_assets": ["AAPL"],
+                "simulation_method": "hybrid_qml",
+                "time_horizon_days": 7,
+                "num_scenarios": 1000
+            }
+        }
 
 
 class SimulationResponse(BaseModel):
-    """Complete simulation response"""
+    """Enhanced simulation response"""
     request_id: str
     timestamp: datetime
-    news_analysis: List[SentimentAnalysis]
+    news_analysis: List[Dict[str, Any]]
     market_predictions: List[MarketPrediction]
-    quantum_metrics: Optional[QuantumMetrics]
-    classical_comparison: Optional[Dict[str, Any]]
-    execution_time_seconds: float
-    warnings: List[str] = []
+    quantum_metrics: Optional[QuantumMetrics] = None
+    warnings: List[str] = Field(default_factory=list)
+    processing_time_ms: Optional[float] = None
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            float: lambda v: round(v, 6) if v is not None else None
+        }
 
 
-class BacktestResult(BaseModel):
-    """Backtesting results"""
-    total_return: float
+class PortfolioPosition(BaseModel):
+    """Portfolio position"""
+    symbol: str
+    shares: float
+    avg_cost: float
+    current_price: Optional[float] = None
+    market_value: Optional[float] = None
+    unrealized_pnl: Optional[float] = None
+    weight: Optional[float] = None
+
+
+class PortfolioOptimizationRequest(BaseModel):
+    """Portfolio optimization request"""
+    positions: List[PortfolioPosition]
+    risk_tolerance: float = Field(default=0.5, ge=0.0, le=1.0)
+    optimization_method: str = Field(default="quantum_vqe")
+    constraints: Optional[Dict[str, Any]] = None
+
+
+class PortfolioOptimizationResponse(BaseModel):
+    """Portfolio optimization response"""
+    original_portfolio: Dict[str, Any]
+    optimized_portfolio: Dict[str, Any]
+    recommended_adjustments: List[Dict[str, Any]]
+    expected_return: float
+    expected_risk: float
     sharpe_ratio: float
-    max_drawdown: float
-    win_rate: float
-    profit_factor: float
-    trades: List[Dict[str, Any]]
-    equity_curve: List[float]
-    performance_metrics: Dict[str, float]
+    quantum_metrics: Optional[QuantumMetrics] = None
 
 
-# WebSocket Models
-class WSMessage(BaseModel):
-    """WebSocket message format"""
-    type: str
-    data: Dict[str, Any]
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+class MarketDataPoint(BaseModel):
+    """Market data point"""
+    timestamp: datetime
+    price: float
+    volume: float
+    volatility: Optional[float] = None
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
 
 
-class SimulationProgress(BaseModel):
-    """Progress update for long-running simulations"""
-    request_id: str
-    stage: str
-    progress: float = Field(..., ge=0, le=1)
-    message: str
-    estimated_time_remaining: Optional[float] = None
+class HistoricalDataRequest(BaseModel):
+    """Historical data request"""
+    asset: str
+    start_date: datetime
+    end_date: datetime
+    interval: str = Field(default="1d", description="1m, 5m, 1h, 1d")
+
+
+class HistoricalDataResponse(BaseModel):
+    """Historical data response"""
+    asset: str
+    data_points: List[MarketDataPoint]
+    statistics: Dict[str, float]
+

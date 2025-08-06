@@ -15,6 +15,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Import components
+import NewsInput from './NewsInput';
 import {
     BlochSphereNetwork,
     WavefunctionCollapse,
@@ -86,7 +87,7 @@ interface SimulationResults {
 const App: React.FC = () => {
     // Core simulation state
     const [activeTab, setActiveTab] = useState('simulator');
-    const [newsInputs, setNewsInputs] = useState(['', '', '']);
+    const [newsInputs, setNewsInputs] = useState(['']);
     const [selectedAssets, setSelectedAssets] = useState(['AAPL', 'MSFT', 'GOOGL']);
     const [simulationMethod, setSimulationMethod] = useState('hybrid_qml');
     const [isSimulating, setIsSimulating] = useState(false);
@@ -344,54 +345,12 @@ const App: React.FC = () => {
                     <div className="space-y-8">
                         {/* News Input Section */}
                         <div className="bg-gray-800 rounded-lg p-6">
-                            <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
-                                <DocumentTextIcon className="w-6 h-6 mr-2 text-purple-400" />
-                                Market News Analysis
-                            </h2>
-                            <div className="space-y-4">
-                                {newsInputs.map((input, index) => (
-                                    <div key={index}>
-                                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                                            News Input {index + 1}
-                                        </label>
-                                        <textarea
-                                            value={input}
-                                            onChange={(e) => {
-                                                const newInputs = [...newsInputs];
-                                                newInputs[index] = e.target.value;
-                                                setNewsInputs(newInputs);
-                                            }}
-                                            placeholder="Enter market news, earnings report, or financial headline..."
-                                            className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                                            rows={3}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Asset Selection */}
-                        <div className="bg-gray-800 rounded-lg p-6">
-                            <h3 className="text-lg font-semibold text-white mb-4">Target Assets</h3>
-                            <div className="grid grid-cols-3 gap-4">
-                                {['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'AMZN', 'NVDA'].map(asset => (
-                                    <label key={asset} className="flex items-center space-x-2">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedAssets.includes(asset)}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setSelectedAssets([...selectedAssets, asset]);
-                                                } else {
-                                                    setSelectedAssets(selectedAssets.filter(a => a !== asset));
-                                                }
-                                            }}
-                                            className="rounded bg-gray-700 border-gray-600 text-purple-600 focus:ring-purple-500"
-                                        />
-                                        <span className="text-white">{asset}</span>
-                                    </label>
-                                ))}
-                            </div>
+                            <NewsInput
+                                value={newsInputs}
+                                onChange={setNewsInputs}
+                                selectedAssets={selectedAssets}
+                                onAssetsChange={setSelectedAssets}
+                            />
                         </div>
 
                         {/* Simulation Settings */}
@@ -453,22 +412,147 @@ const App: React.FC = () => {
                 )}
 
                 {/* Results Tab */}
-                {activeTab === 'results' && simulationResults && (
+                {activeTab === 'results' && (
                     <div className="space-y-8">
-                        <MarketSimulation
-                            predictions={simulationResults.market_predictions}
-                            sentimentData={simulationResults.news_analysis}
-                        />
-
-                        {simulationResults.market_predictions.map((prediction, index) => (
-                            <div key={index} className="space-y-6">
-                                <PredictionExplanation
-                                    prediction={prediction}
-                                    sentimentData={simulationResults.news_analysis}
-                                />
-                                <ProbabilityDistribution prediction={prediction} />
+                        {!simulationResults ? (
+                            <div className="text-center py-12">
+                                <h3 className="text-xl font-semibold text-white mb-4">No Results Available</h3>
+                                <p className="text-gray-400">Run a simulation first to see results here.</p>
                             </div>
-                        ))}
+                        ) : (
+                            <>
+                                <div className="bg-gray-800 rounded-lg p-6">
+                                    <h3 className="text-xl font-semibold text-white mb-4">Simulation Results</h3>
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                        <div>
+                                            <span className="text-gray-400">Request ID:</span>
+                                            <span className="text-white ml-2">{simulationResults.request_id}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-400">Execution Time:</span>
+                                            <span className="text-white ml-2">{simulationResults.execution_time_seconds?.toFixed(2)}s</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-400">News Items:</span>
+                                            <span className="text-white ml-2">{simulationResults.news_analysis?.length || 0}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-400">Predictions:</span>
+                                            <span className="text-white ml-2">{simulationResults.market_predictions?.length || 0}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {simulationResults.market_predictions && simulationResults.market_predictions.length > 0 ? (
+                                    <>
+                                        {/* News Analysis Results */}
+                                        {simulationResults.news_analysis && simulationResults.news_analysis.length > 0 && (
+                                            <div className="bg-gray-800 rounded-lg p-6">
+                                                <h3 className="text-xl font-semibold text-white mb-4">📰 News Analysis</h3>
+                                                <div className="space-y-4">
+                                                    {simulationResults.news_analysis.map((news, index) => (
+                                                        <div key={index} className="border-l-4 border-blue-500 pl-4">
+                                                            <div className="text-white font-medium">{news.headline}</div>
+                                                            <div className="text-sm text-gray-400 mt-1">
+                                                                Sentiment: <span className={`font-medium ${
+                                                                    news.sentiment === 'positive' ? 'text-green-400' :
+                                                                    news.sentiment === 'negative' ? 'text-red-400' : 'text-yellow-400'
+                                                                }`}>{news.sentiment}</span> 
+                                                                (Confidence: {(news.confidence * 100).toFixed(1)}%)
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Market Predictions */}
+                                        <div className="space-y-6">
+                                            {simulationResults.market_predictions.map((prediction, index) => (
+                                                <div key={index} className="bg-gray-800 rounded-lg p-6">
+                                                    <h3 className="text-xl font-semibold text-white mb-4">
+                                                        📈 {prediction.asset} Prediction
+                                                    </h3>
+                                                    
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                                        <div className="text-center">
+                                                            <div className="text-2xl font-bold text-white">
+                                                                ${prediction.current_price?.toFixed(2)}
+                                                            </div>
+                                                            <div className="text-sm text-gray-400">Current Price</div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className={`text-2xl font-bold ${
+                                                                prediction.expected_return > 0 ? 'text-green-400' : 'text-red-400'
+                                                            }`}>
+                                                                {prediction.expected_return > 0 ? '+' : ''}{(prediction.expected_return * 100).toFixed(2)}%
+                                                            </div>
+                                                            <div className="text-sm text-gray-400">Expected Return</div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className="text-2xl font-bold text-yellow-400">
+                                                                {(prediction.volatility * 100).toFixed(1)}%
+                                                            </div>
+                                                            <div className="text-sm text-gray-400">Volatility</div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className="text-2xl font-bold text-blue-400">
+                                                                {(prediction.confidence * 100).toFixed(1)}%
+                                                            </div>
+                                                            <div className="text-sm text-gray-400">Confidence</div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {prediction.predicted_scenarios && prediction.predicted_scenarios.length > 0 && (
+                                                        <div>
+                                                            <h4 className="font-medium text-white mb-2">
+                                                                Price Scenarios ({prediction.predicted_scenarios.length} scenarios)
+                                                            </h4>
+                                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                                                            {prediction.predicted_scenarios.slice(0, 6).map((scenario: any, scenarioIndex: number) => {
+                                                                    const finalPrice = scenario.price_path[scenario.price_path.length - 1];
+                                                                    const priceChange = ((finalPrice - prediction.current_price) / prediction.current_price) * 100;
+                                                                    return (
+                                                                        <div key={scenarioIndex} className="bg-gray-700 p-2 rounded">
+                                                                            <div className="text-white">
+                                                                                ${finalPrice?.toFixed(2)}
+                                                                            </div>
+                                                                            <div className={`text-xs ${
+                                                                                priceChange > 0 ? 'text-green-400' : 'text-red-400'
+                                                                            }`}>
+                                                                                {priceChange > 0 ? '+' : ''}{priceChange.toFixed(1)}%
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                            {prediction.predicted_scenarios.length > 6 && (
+                                                                <div className="text-gray-400 text-sm mt-2">
+                                                                    ... and {prediction.predicted_scenarios.length - 6} more scenarios
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Try to render the advanced components in a safe way */}
+                                        <div className="mt-8">
+                                            <div className="text-lg font-semibold text-white mb-4">Advanced Analysis</div>
+                                            <div className="text-gray-400">
+                                                Note: Advanced visualizations and explanations will be restored once component issues are resolved.
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="text-center py-12">
+                                        <h3 className="text-xl font-semibold text-white mb-4">No Predictions Available</h3>
+                                        <p className="text-gray-400">The simulation response doesn't contain valid market predictions.</p>
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </div>
                 )}
 

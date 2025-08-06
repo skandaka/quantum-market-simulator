@@ -245,7 +245,6 @@ const SimulatorPage: React.FC = () => {
                         >
                             <ResultsDashboard
                                 results={results}
-                                compareClassical={compareClassical}
                             />
                         </motion.div>
                     </>

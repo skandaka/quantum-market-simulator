@@ -1,292 +1,453 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { SimulationResponse } from '../types';
+// frontend/src/components/ResultsDashboard.tsx
+
+import React, { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-    BeakerIcon,
-    ClockIcon,
-    CpuChipIcon,
-    ArrowsRightLeftIcon,
-    ArrowDownTrayIcon,
+    ChartBarIcon,
+    ArrowTrendingUpIcon,
+    ArrowTrendingDownIcon,
+    ExclamationTriangleIcon,
+    InformationCircleIcon,
+    ChevronDownIcon,
+    SparklesIcon,
+    BoltIcon,
+    ShieldCheckIcon,
+    FireIcon
 } from '@heroicons/react/24/outline';
+import ProbabilityDistribution from './ProbabilityDistribution';
+import PredictionExplanation from './PredictionExplanation';
+import {
+    AreaChart, Area, BarChart, Bar, LineChart, Line,
+    XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+    ResponsiveContainer, ReferenceLine, Cell, PieChart, Pie
+} from 'recharts';
 
 interface ResultsDashboardProps {
-    results: SimulationResponse;
-    compareClassical: boolean;
+    results: any;
+    isLoading?: boolean;
 }
 
-const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, compareClassical }) => {
-    const [activeTab, setActiveTab] = useState<'quantum' | 'comparison' | 'technical'>('quantum');
+const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, isLoading }) => {
+    const [selectedAsset, setSelectedAsset] = useState<string>('');
+    const [viewMode, setViewMode] = useState<'overview' | 'detailed' | 'comparison'>('overview');
+    const [showRawData, setShowRawData] = useState(false);
 
-    const exportResults = () => {
-        const dataStr = JSON.stringify(results, null, 2);
-        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    // Initialize selected asset when results change
+    React.useEffect(() => {
+        if (results?.market_predictions?.length > 0 && !selectedAsset) {
+            setSelectedAsset(results.market_predictions[0].asset);
+        }
+    }, [results, selectedAsset]);
 
-        const exportFileDefaultName = `quantum_simulation_${results.request_id}.json`;
+    const selectedPrediction = useMemo(() => {
+        if (!results?.market_predictions || !selectedAsset) return null;
+        return results.market_predictions.find((p: any) => p.asset === selectedAsset);
+    }, [results, selectedAsset]);
 
-        const linkElement = document.createElement('a');
-        linkElement.setAttribute('href', dataUri);
-        linkElement.setAttribute('download', exportFileDefaultName);
-        linkElement.click();
-    };
+    const impactSummary = useMemo(() => {
+        if (!results?.market_predictions) return null;
+
+        const predictions = results.market_predictions;
+        const avgReturn = predictions.reduce((sum: number, p: any) => sum + p.expected_return, 0) / predictions.length;
+        const maxReturn = Math.max(...predictions.map((p: any) => p.expected_return));
+        const minReturn = Math.min(...predictions.map((p: any) => p.expected_return));
+
+        return {
+            average: avgReturn,
+            max: maxReturn,
+            min: minReturn,
+            volatility: predictions.reduce((sum: number, p: any) => sum + p.volatility, 0) / predictions.length
+        };
+    }, [results]);
+
+    const sentimentBreakdown = useMemo(() => {
+        if (!results?.news_analysis) return [];
+
+        const sentimentCounts: { [key: string]: number } = {};
+        results.news_analysis.forEach((item: any) => {
+            const sentiment = item.sentiment || 'unknown';
+            sentimentCounts[sentiment] = (sentimentCounts[sentiment] || 0) + 1;
+        });
+
+        return Object.entries(sentimentCounts).map(([name, value]) => ({
+            name: name.replace('_', ' ').toUpperCase(),
+            value,
+            fill: name.includes('very_negative') ? '#DC2626' :
+                name.includes('negative') ? '#EF4444' :
+                    name.includes('positive') ? '#10B981' :
+                        name.includes('very_positive') ? '#059669' : '#6B7280'
+        }));
+    }, [results]);
+
+    if (isLoading) {
+        return (
+            <div className="bg-gray-800 rounded-xl p-8 border border-gray-700">
+                <div className="flex items-center justify-center space-x-3">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+                    <span className="text-lg text-gray-300">Analyzing market impact...</span>
+                </div>
+            </div>
+        );
+    }
+
+    if (!results) {
+        return (
+            <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
+                <ChartBarIcon className="w-12 h-12 mx-auto mb-4 text-gray-600" />
+                <p className="text-gray-400">No results to display. Run a simulation to see predictions.</p>
+            </div>
+        );
+    }
 
     return (
-        <div className="bg-gray-800 rounded-xl p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-semibold flex items-center">
-                    <BeakerIcon className="w-7 h-7 mr-3" />
-                    Simulation Results Dashboard
-                </h2>
-                <button
-                    onClick={exportResults}
-                    className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                >
-                    <ArrowDownTrayIcon className="w-5 h-5" />
-                    <span>Export Results</span>
-                </button>
-            </div>
+        <div className="space-y-6">
+            {/* Header with View Mode Selector */}
+            <div className="bg-gradient-to-r from-purple-900/50 to-blue-900/50 rounded-xl p-6 border border-purple-700/50">
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-bold text-white flex items-center">
+                        <ChartBarIcon className="w-7 h-7 mr-3 text-purple-400" />
+                        Market Impact Analysis
+                    </h2>
+                    <div className="flex space-x-2">
+                        {['overview', 'detailed', 'comparison'].map((mode) => (
+                            <button
+                                key={mode}
+                                onClick={() => setViewMode(mode as any)}
+                                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                    viewMode === mode
+                                        ? 'bg-purple-600 text-white shadow-lg'
+                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                }`}
+                            >
+                                {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                            </button>
+                        ))}
+                    </div>
+                </div>
 
-            {/* Tabs */}
-            <div className="flex space-x-1 bg-gray-700 p-1 rounded-lg mb-6">
-                <button
-                    onClick={() => setActiveTab('quantum')}
-                    className={`flex-1 py-2 px-4 rounded-md transition-all ${
-                        activeTab === 'quantum'
-                            ? 'bg-gray-600 text-white'
-                            : 'text-gray-400 hover:text-white'
-                    }`}
-                >
-                    Quantum Metrics
-                </button>
-                {compareClassical && (
-                    <button
-                        onClick={() => setActiveTab('comparison')}
-                        className={`flex-1 py-2 px-4 rounded-md transition-all ${
-                            activeTab === 'comparison'
-                                ? 'bg-gray-600 text-white'
-                                : 'text-gray-400 hover:text-white'
-                        }`}
-                    >
-                        Classical Comparison
-                    </button>
+                {/* Quick Stats */}
+                {impactSummary && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-gray-800/50 rounded-lg p-3">
+                            <p className="text-xs text-gray-400 mb-1">Average Impact</p>
+                            <p className={`text-xl font-bold ${impactSummary.average >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {impactSummary.average >= 0 ? '+' : ''}{(impactSummary.average * 100).toFixed(2)}%
+                            </p>
+                        </div>
+                        <div className="bg-gray-800/50 rounded-lg p-3">
+                            <p className="text-xs text-gray-400 mb-1">Max Impact</p>
+                            <p className={`text-xl font-bold ${impactSummary.max >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {impactSummary.max >= 0 ? '+' : ''}{(impactSummary.max * 100).toFixed(2)}%
+                            </p>
+                        </div>
+                        <div className="bg-gray-800/50 rounded-lg p-3">
+                            <p className="text-xs text-gray-400 mb-1">Min Impact</p>
+                            <p className={`text-xl font-bold ${impactSummary.min >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {impactSummary.min >= 0 ? '+' : ''}{(impactSummary.min * 100).toFixed(2)}%
+                            </p>
+                        </div>
+                        <div className="bg-gray-800/50 rounded-lg p-3">
+                            <p className="text-xs text-gray-400 mb-1">Avg Volatility</p>
+                            <p className="text-xl font-bold text-yellow-400">
+                                {(impactSummary.volatility * 100).toFixed(1)}%
+                            </p>
+                        </div>
+                    </div>
                 )}
-                <button
-                    onClick={() => setActiveTab('technical')}
-                    className={`flex-1 py-2 px-4 rounded-md transition-all ${
-                        activeTab === 'technical'
-                            ? 'bg-gray-600 text-white'
-                            : 'text-gray-400 hover:text-white'
-                    }`}
-                >
-                    Technical Details
-                </button>
             </div>
 
-            {/* Tab Content */}
-            {activeTab === 'quantum' && results.quantum_metrics && (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="space-y-6"
-                >
-                    <div className="grid grid-cols-2 gap-6">
-                        <div className="bg-gray-700 rounded-lg p-5">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-semibold">Quantum Circuit Metrics</h3>
-                                <CpuChipIcon className="w-6 h-6 text-purple-400" />
-                            </div>
-                            <div className="space-y-3">
-                                <div className="flex justify-between">
-                                    <span className="text-gray-400">Circuit Depth</span>
-                                    <span className="font-mono">{results.quantum_metrics.circuit_depth}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-400">Number of Qubits</span>
-                                    <span className="font-mono">{results.quantum_metrics.num_qubits}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-400">Quantum Volume</span>
-                                    <span className="font-mono">{results.quantum_metrics.quantum_volume}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-400">Entanglement Measure</span>
-                                    <span className="font-mono">{results.quantum_metrics.entanglement_measure.toFixed(3)}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bg-gray-700 rounded-lg p-5">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-semibold">Execution Performance</h3>
-                                <ClockIcon className="w-6 h-6 text-blue-400" />
-                            </div>
-                            <div className="space-y-3">
-                                <div className="flex justify-between">
-                                    <span className="text-gray-400">Quantum Execution Time</span>
-                                    <span className="font-mono">{results.quantum_metrics.execution_time_ms}ms</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-400">Total Simulation Time</span>
-                                    <span className="font-mono">{results.execution_time_seconds.toFixed(2)}s</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-400">Hardware Backend</span>
-                                    <span className="font-mono">{results.quantum_metrics.hardware_backend}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-400">Success Probability</span>
-                                    <span className="font-mono">{(results.quantum_metrics.success_probability * 100).toFixed(1)}%</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Quantum Advantage Visualization */}
-                    <div className="bg-gray-700 rounded-lg p-5">
-                        <h3 className="text-lg font-semibold mb-4">Quantum Advantage Metrics</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <div className="flex justify-between mb-2">
-                                    <span>Computational Speedup</span>
-                                    <span className="text-green-400">2.4x faster</span>
-                                </div>
-                                <div className="w-full bg-gray-600 rounded-full h-2">
-                                    <motion.div
-                                        initial={{ width: 0 }}
-                                        animate={{ width: '70%' }}
-                                        className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <div className="flex justify-between mb-2">
-                                    <span>Prediction Accuracy Improvement</span>
-                                    <span className="text-green-400">+15%</span>
-                                </div>
-                                <div className="w-full bg-gray-600 rounded-full h-2">
-                                    <motion.div
-                                        initial={{ width: 0 }}
-                                        animate={{ width: '85%' }}
-                                        className="bg-gradient-to-r from-purple-500 to-pink-600 h-2 rounded-full"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </motion.div>
-            )}
-
-            {activeTab === 'comparison' && results.classical_comparison && (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="space-y-6"
-                >
-                    <div className="bg-gray-700 rounded-lg p-5">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold">Method Comparison</h3>
-                            <ArrowsRightLeftIcon className="w-6 h-6 text-yellow-400" />
-                        </div>
-
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                <tr className="border-b border-gray-600">
-                                    <th className="text-left py-2">Metric</th>
-                                    <th className="text-center py-2">Quantum</th>
-                                    <th className="text-center py-2">Classical</th>
-                                    <th className="text-center py-2">Difference</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                {results.classical_comparison.performance_diff.prediction_differences.map((diff, idx) => (
-                                    <tr key={idx} className="border-b border-gray-600/50">
-                                        <td className="py-2">{diff.asset}</td>
-                                        <td className="text-center py-2">
-                                            {(diff.return_difference * 100).toFixed(2)}%
-                                        </td>
-                                        <td className="text-center py-2">-</td>
-                                        <td className="text-center py-2 text-green-400">
-                                            +{(diff.return_difference * 100).toFixed(2)}%
-                                        </td>
-                                    </tr>
+            {/* Asset Selector Dropdown */}
+            {results.market_predictions && results.market_predictions.length > 0 && (
+                <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-white flex items-center">
+                            <SparklesIcon className="w-5 h-5 mr-2 text-blue-400" />
+                            Select Asset for Detailed Analysis
+                        </h3>
+                        <div className="relative">
+                            <select
+                                value={selectedAsset}
+                                onChange={(e) => setSelectedAsset(e.target.value)}
+                                className="appearance-none bg-gray-700 border border-gray-600 text-white rounded-lg pl-4 pr-10 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                                {results.market_predictions.map((pred: any) => (
+                                    <option key={pred.asset} value={pred.asset}>
+                                        {pred.asset} ({pred.expected_return >= 0 ? '+' : ''}{(pred.expected_return * 100).toFixed(2)}%)
+                                    </option>
                                 ))}
-                                </tbody>
-                            </table>
+                            </select>
+                            <ChevronDownIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
                         </div>
                     </div>
 
-                    {/* Uncertainty Comparison */}
-                    <div className="grid grid-cols-2 gap-6">
-                        <div className="bg-gray-700 rounded-lg p-5 text-center">
-                            <h4 className="text-lg font-semibold mb-4">Quantum Uncertainty</h4>
-                            <div className="text-4xl font-bold text-purple-400">
-                                {(results.classical_comparison.performance_diff.uncertainty_comparison.avg_quantum_uncertainty * 100).toFixed(1)}%
+                    {/* Selected Asset Quick Info */}
+                    {selectedPrediction && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div className="bg-gray-700/50 rounded-lg p-3">
+                                <p className="text-xs text-gray-400">Current Price</p>
+                                <p className="text-lg font-semibold text-white">
+                                    ${selectedPrediction.current_price.toFixed(2)}
+                                </p>
                             </div>
-                            <p className="text-sm text-gray-400 mt-2">Lower is better</p>
-                        </div>
-                        <div className="bg-gray-700 rounded-lg p-5 text-center">
-                            <h4 className="text-lg font-semibold mb-4">Classical Uncertainty</h4>
-                            <div className="text-4xl font-bold text-blue-400">
-                                {(results.classical_comparison.performance_diff.uncertainty_comparison.avg_classical_uncertainty * 100).toFixed(1)}%
+                            <div className="bg-gray-700/50 rounded-lg p-3">
+                                <p className="text-xs text-gray-400">Expected Return</p>
+                                <p className={`text-lg font-semibold flex items-center ${
+                                    selectedPrediction.expected_return >= 0 ? 'text-green-400' : 'text-red-400'
+                                }`}>
+                                    {selectedPrediction.expected_return >= 0 ? (
+                                        <ArrowTrendingUpIcon className="w-4 h-4 mr-1" />
+                                    ) : (
+                                        <ArrowTrendingDownIcon className="w-4 h-4 mr-1" />
+                                    )}
+                                    {(selectedPrediction.expected_return * 100).toFixed(2)}%
+                                </p>
                             </div>
-                            <p className="text-sm text-gray-400 mt-2">Lower is better</p>
-                        </div>
-                    </div>
-                </motion.div>
-            )}
-
-            {activeTab === 'technical' && (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="space-y-6"
-                >
-                    <div className="bg-gray-700 rounded-lg p-5">
-                        <h3 className="text-lg font-semibold mb-4">Technical Implementation Details</h3>
-                        <div className="space-y-3 text-sm">
-                            <div>
-                                <span className="text-gray-400">Request ID:</span>
-                                <span className="ml-2 font-mono">{results.request_id}</span>
+                            <div className="bg-gray-700/50 rounded-lg p-3">
+                                <p className="text-xs text-gray-400">Confidence</p>
+                                <p className="text-lg font-semibold text-purple-400">
+                                    {(selectedPrediction.confidence * 100).toFixed(0)}%
+                                </p>
                             </div>
-                            <div>
-                                <span className="text-gray-400">Timestamp:</span>
-                                <span className="ml-2">{new Date(results.timestamp).toLocaleString()}</span>
+                            <div className="bg-gray-700/50 rounded-lg p-3">
+                                <p className="text-xs text-gray-400">Volatility</p>
+                                <p className="text-lg font-semibold text-yellow-400">
+                                    {(selectedPrediction.volatility * 100).toFixed(1)}%
+                                </p>
                             </div>
-                            <div>
-                                <span className="text-gray-400">News Items Processed:</span>
-                                <span className="ml-2">{results.news_analysis.length}</span>
-                            </div>
-                            <div>
-                                <span className="text-gray-400">Assets Analyzed:</span>
-                                <span className="ml-2">{results.market_predictions.length}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Warnings */}
-                    {results.warnings.length > 0 && (
-                        <div className="bg-yellow-900/20 border border-yellow-600 rounded-lg p-5">
-                            <h3 className="text-lg font-semibold mb-3 text-yellow-400">Warnings</h3>
-                            <ul className="space-y-2 text-sm">
-                                {results.warnings.map((warning, idx) => (
-                                    <li key={idx} className="flex items-start">
-                                        <span className="text-yellow-400 mr-2">⚠</span>
-                                        <span>{warning}</span>
-                                    </li>
-                                ))}
-                            </ul>
                         </div>
                     )}
-
-                    {/* API Response Preview */}
-                    <div className="bg-gray-700 rounded-lg p-5">
-                        <h3 className="text-lg font-semibold mb-3">API Response Structure</h3>
-                        <pre className="text-xs overflow-x-auto bg-gray-800 p-4 rounded">
-                            {JSON.stringify(results, null, 2).substring(0, 500)}...
-                        </pre>
-                    </div>
-                </motion.div>
+                </div>
             )}
+
+            {/* View Mode Content */}
+            <AnimatePresence mode="wait">
+                {viewMode === 'overview' && (
+                    <motion.div
+                        key="overview"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="space-y-6"
+                    >
+                        {/* Sentiment Breakdown */}
+                        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                            <h3 className="text-lg font-semibold mb-4 text-white flex items-center">
+                                <BoltIcon className="w-5 h-5 mr-2 text-yellow-400" />
+                                Sentiment Analysis Breakdown
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <ResponsiveContainer width="100%" height={200}>
+                                        <PieChart>
+                                            <Pie
+                                                data={sentimentBreakdown}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={60}
+                                                outerRadius={80}
+                                                paddingAngle={2}
+                                                dataKey="value"
+                                            >
+                                                {sentimentBreakdown.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="space-y-2">
+                                    {sentimentBreakdown.map((item) => (
+                                        <div key={item.name} className="flex items-center justify-between">
+                                            <div className="flex items-center">
+                                                <div
+                                                    className="w-3 h-3 rounded-full mr-2"
+                                                    style={{ backgroundColor: item.fill }}
+                                                />
+                                                <span className="text-sm text-gray-300">{item.name}</span>
+                                            </div>
+                                            <span className="text-sm font-semibold text-white">{item.value}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Impact Comparison Chart */}
+                        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                            <h3 className="text-lg font-semibold mb-4 text-white flex items-center">
+                                <FireIcon className="w-5 h-5 mr-2 text-orange-400" />
+                                Expected Impact by Asset
+                            </h3>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <BarChart data={results.market_predictions}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                    <XAxis dataKey="asset" stroke="#9CA3AF" />
+                                    <YAxis
+                                        stroke="#9CA3AF"
+                                        tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
+                                    />
+                                    <Tooltip
+                                        formatter={(value: any) => `${(value * 100).toFixed(2)}%`}
+                                        contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
+                                    />
+                                    <ReferenceLine y={0} stroke="#6B7280" />
+                                    <Bar dataKey="expected_return" radius={[8, 8, 0, 0]}>
+                                        {results.market_predictions.map((entry: any, index: number) => (
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={entry.expected_return >= 0 ? '#10B981' : '#EF4444'}
+                                            />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </motion.div>
+                )}
+
+                {viewMode === 'detailed' && selectedPrediction && (
+                    <motion.div
+                        key="detailed"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="space-y-6"
+                    >
+                        {/* Probability Distribution */}
+                        <ProbabilityDistribution prediction={selectedPrediction} />
+
+                        {/* Prediction Explanation */}
+                        {selectedPrediction.explanation && (
+                            <PredictionExplanation
+                                prediction={selectedPrediction}
+                                sentimentData={results.news_analysis || []}
+                            />
+                        )}
+
+                        {/* Risk Assessment */}
+                        {selectedPrediction.explanation?.risk_assessment && (
+                            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                                <h3 className="text-lg font-semibold mb-4 text-white flex items-center">
+                                    <ShieldCheckIcon className="w-5 h-5 mr-2 text-green-400" />
+                                    Risk Assessment
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {Object.entries(selectedPrediction.explanation.risk_assessment).map(([key, value]) => (
+                                        <div key={key} className="bg-gray-700/50 rounded-lg p-4">
+                                            <p className="text-sm text-gray-400 mb-2">
+                                                {key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                            </p>
+                                            <div className={`text-lg font-semibold ${
+                                                value === 'Very High' ? 'text-red-400' :
+                                                    value === 'High' ? 'text-orange-400' :
+                                                        value === 'Moderate' ? 'text-yellow-400' :
+                                                            'text-green-400'
+                                            }`}>
+                                                {value as string}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </motion.div>
+                )}
+
+                {viewMode === 'comparison' && (
+                    <motion.div
+                        key="comparison"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="space-y-6"
+                    >
+                        {/* Method Comparison */}
+                        {results.quantum_metrics && (
+                            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                                <h3 className="text-lg font-semibold mb-4 text-white">
+                                    Quantum vs Classical Performance
+                                </h3>
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div className="bg-gray-700/50 rounded-lg p-4">
+                                        <h4 className="text-sm font-medium text-purple-400 mb-3">Quantum Method</h4>
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between">
+                                                <span className="text-sm text-gray-400">Accuracy</span>
+                                                <span className="text-sm font-semibold text-white">
+                                                    {results.quantum_metrics.accuracy?.toFixed(2) || 'N/A'}%
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-sm text-gray-400">Processing Time</span>
+                                                <span className="text-sm font-semibold text-white">
+                                                    {results.quantum_metrics.processing_time?.toFixed(2) || 'N/A'}ms
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-gray-700/50 rounded-lg p-4">
+                                        <h4 className="text-sm font-medium text-blue-400 mb-3">Classical Method</h4>
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between">
+                                                <span className="text-sm text-gray-400">Accuracy</span>
+                                                <span className="text-sm font-semibold text-white">
+                                                    {results.classical_metrics?.accuracy?.toFixed(2) || 'N/A'}%
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-sm text-gray-400">Processing Time</span>
+                                                <span className="text-sm font-semibold text-white">
+                                                    {results.classical_metrics?.processing_time?.toFixed(2) || 'N/A'}ms
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Warnings */}
+                        {results.warnings && results.warnings.length > 0 && (
+                            <div className="bg-yellow-900/20 border border-yellow-600 rounded-xl p-6">
+                                <h3 className="text-lg font-semibold mb-3 text-yellow-400 flex items-center">
+                                    <ExclamationTriangleIcon className="w-5 h-5 mr-2" />
+                                    Analysis Warnings
+                                </h3>
+                                <ul className="space-y-2">
+                                    {results.warnings.map((warning: string, idx: number) => (
+                                        <li key={idx} className="flex items-start text-sm text-yellow-200">
+                                            <span className="text-yellow-400 mr-2">•</span>
+                                            <span>{warning}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
+                        {/* Raw Data Toggle */}
+                        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-white flex items-center">
+                                    <InformationCircleIcon className="w-5 h-5 mr-2 text-gray-400" />
+                                    Raw API Response
+                                </h3>
+                                <button
+                                    onClick={() => setShowRawData(!showRawData)}
+                                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors"
+                                >
+                                    {showRawData ? 'Hide' : 'Show'} Data
+                                </button>
+                            </div>
+                            {showRawData && (
+                                <pre className="text-xs overflow-x-auto bg-gray-900 p-4 rounded-lg text-gray-300">
+                                    {JSON.stringify(results, null, 2)}
+                                </pre>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };
