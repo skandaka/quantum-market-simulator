@@ -114,6 +114,24 @@ class EnhancedSentimentAnalyzer:
         self._spacy_initialized = False
         self.quantum_success_rate = 0.0
 
+        # Initialize models as None - they will be loaded lazily when needed
+        self.models = {
+            'finbert': None,  # Will be loaded in _init_finbert
+            'bloomberg_gpt': None,  # Future enhancement
+            'sec_bert': None,  # Future enhancement
+            'twitter_roberta': None,  # Future enhancement
+            'earnings_t5': None  # Future enhancement
+        }
+
+        # Crisis detection - simple rule-based for now
+        self.crisis_detector = None
+
+        # Entity-specific sentiment tracking
+        self.entity_sentiment_cache = {}
+
+        # Temporal sentiment evolution - placeholder for future enhancement
+        self.temporal_analyzer = None
+
     async def initialize(self):
         """Initialize sentiment analyzer components"""
         if self._initialized:
@@ -127,6 +145,27 @@ class EnhancedSentimentAnalyzer:
             logger.warning(f"Quantum NLP initialization failed: {e}")
 
         self._initialized = True
+
+    async def analyze_with_context(self, text, historical_context, market_state):
+        # Layer 1: Multi-model ensemble
+        sentiments = await self._ensemble_analysis(text)
+
+        # Layer 2: Context-aware adjustment
+        adjusted = self._apply_market_context(sentiments, market_state)
+
+        # Layer 3: Entity-specific analysis
+        entity_sentiments = self._extract_entity_sentiments(text)
+
+        # Layer 4: Temporal evolution
+        temporal_impact = self._analyze_temporal_impact(
+            current=adjusted,
+            historical=historical_context
+        )
+
+        # Layer 5: Cross-validation with market data
+        validated = await self._validate_with_market_data(temporal_impact)
+
+        return validated
 
     def _init_finbert(self):
         """Lazy initialization of FinBERT model"""

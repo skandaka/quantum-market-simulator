@@ -8,7 +8,7 @@ class EnhancedSimulationAPI {
     private wsConnection: WebSocket | null = null;
 
     constructor() {
-        const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
         console.log('API Base URL:', baseURL);
 
         this.client = axios.create({
@@ -198,7 +198,7 @@ class EnhancedSimulationAPI {
 
     // WebSocket connection for real-time monitoring
     connectQuantumMonitor(onMessage: (data: any) => void, onError?: (error: any) => void): void {
-        const wsUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000')
+        const wsUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8001')
             .replace('http://', 'ws://')
             .replace('https://', 'wss://');
 

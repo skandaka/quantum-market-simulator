@@ -1,0 +1,228 @@
+# PHASE 6: Production Docker Compose Configuration
+version: '3.8'
+
+services:
+  # Production Backend with Quantum Market Simulator
+  quantum-backend-prod:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+      args:
+        ENVIRONMENT: production
+        QUANTUM_ENABLED: "true"
+    container_name: quantum_market_simulator_prod
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - QUANTUM_BACKEND=classiq
+      - REDIS_URL=redis://redis-prod:6379
+      - POSTGRES_URL=postgresql://postgres:quantum_prod_pass@postgres-prod:5432/quantum_market_db
+      - LOG_LEVEL=info
+      - WORKERS=4
+      - MAX_MEMORY=2048m
+      - QUANTUM_CACHE_TTL=300
+      - PERFORMANCE_MONITORING=enabled
+      - AUTO_SCALING=enabled
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./cache:/app/cache
+    networks:
+      - quantum-network
+    depends_on:
+      - redis-prod
+      - postgres-prod
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Production Frontend
+  quantum-frontend-prod:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+    container_name: quantum_frontend_prod
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_API_URL=http://quantum-backend-prod:8000
+      - REACT_APP_WS_URL=ws://quantum-backend-prod:8000/ws
+    networks:
+      - quantum-network
+    depends_on:
+      - quantum-backend-prod
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # Production Redis for Caching and Session Management
+  redis-prod:
+    image: redis:7-alpine
+    container_name: quantum_redis_prod
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --save 20 1 --loglevel warning --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data_prod:/data
+    networks:
+      - quantum-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+  # Production PostgreSQL for Data Persistence
+  postgres-prod:
+    image: postgres:15-alpine
+    container_name: quantum_postgres_prod
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=quantum_market_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=quantum_prod_pass
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - quantum-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+
+  # NGINX Load Balancer and Reverse Proxy
+  nginx-prod:
+    image: nginx:alpine
+    container_name: quantum_nginx_prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/nginx/nginx.prod.conf:/etc/nginx/nginx.conf
+      - ./infrastructure/nginx/ssl:/etc/nginx/ssl
+      - ./logs/nginx:/var/log/nginx
+    networks:
+      - quantum-network
+    depends_on:
+      - quantum-backend-prod
+      - quantum-frontend-prod
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+
+  # Prometheus for Metrics Collection
+  prometheus-prod:
+    image: prom/prometheus:latest
+    container_name: quantum_prometheus_prod
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data_prod:/prometheus
+    networks:
+      - quantum-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+  # Grafana for Monitoring Dashboard
+  grafana-prod:
+    image: grafana/grafana:latest
+    container_name: quantum_grafana_prod
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=quantum_dashboard_pass
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data_prod:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - quantum-network
+    depends_on:
+      - prometheus-prod
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+  # Log Aggregation with ELK Stack (Optional)
+  elasticsearch-prod:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    container_name: quantum_elasticsearch_prod
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data_prod:/usr/share/elasticsearch/data
+    networks:
+      - quantum-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+
+volumes:
+  redis_data_prod:
+    driver: local
+  postgres_data_prod:
+    driver: local
+  prometheus_data_prod:
+    driver: local
+  grafana_data_prod:
+    driver: local
+  elasticsearch_data_prod:
+    driver: local
+
+networks:
+  quantum-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

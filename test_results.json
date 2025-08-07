@@ -1,0 +1,77 @@
+{
+  "timestamp": 1754511002.451243,
+  "total_time": 17.993271112442017,
+  "overall_success_rate": 28.57142857142857,
+  "total_tests": 7,
+  "total_successes": 2,
+  "phase_results": {
+    "phase_1": {
+      "tests": [
+        {
+          "test": "1.1_quantum_sentiment_analysis",
+          "status": "FAIL",
+          "error": "Missing quantum embedding"
+        },
+        {
+          "test": "1.2_quantum_monte_carlo",
+          "status": "FAIL",
+          "error": "Function 'main' cannot declare quantum inputs\nIf you need further assistance, please reach out on our Community Slack channel at: https://short.classiq.io/join-slack or open a support ticket at: https://classiq-community.freshdesk.com/support/tickets/new"
+        },
+        {
+          "test": "1.3_quantum_portfolio_optimization",
+          "status": "FAIL",
+          "error": "unmatched ')' (quantum_portfolio_optimizer.py, line 534)"
+        }
+      ],
+      "success_count": 0,
+      "total_count": 3
+    },
+    "phase_3": {
+      "tests": [
+        {
+          "test": "3.1_advanced_circuit_synthesis",
+          "status": "PASS",
+          "details": {
+            "synthesis": "success",
+            "best_optimization": "none",
+            "circuit_depth": 0,
+            "gate_count": 0
+          }
+        },
+        {
+          "test": "3.2_optimized_quantum_execution",
+          "status": "PASS",
+          "details": {
+            "execution": "success",
+            "measurements": 31,
+            "fidelity": 0.9208770302527803
+          }
+        }
+      ],
+      "success_count": 2,
+      "total_count": 2
+    },
+    "api_integration": {
+      "tests": [
+        {
+          "test": "enhanced_simulation_api",
+          "status": "FAIL",
+          "error": "1 validation error for SimulationRequest\nnum_scenarios\n  Input should be greater than or equal to 100 [type=greater_than_equal, input_value=50, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.9/v/greater_than_equal"
+        }
+      ],
+      "success_count": 0,
+      "total_count": 1
+    },
+    "performance": {
+      "tests": [
+        {
+          "test": "quantum_vs_classical_benchmark",
+          "status": "FAIL",
+          "error": "'QuantumNLPModel' object has no attribute 'classical_sentiment_analysis'"
+        }
+      ],
+      "success_count": 0,
+      "total_count": 1
+    }
+  }
+}

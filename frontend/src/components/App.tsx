@@ -187,7 +187,7 @@ const App: React.FC = () => {
             const healthCheck = await simulationApi.healthCheck().catch(() => null);
 
             if (!healthCheck) {
-                toast.error('Backend server is not reachable. Please make sure the backend is running on http://localhost:8000');
+                toast.error('Backend server is not reachable. Please make sure the backend is running on http://localhost:8001');
                 return;
             }
 
@@ -245,7 +245,7 @@ const App: React.FC = () => {
 
             // Provide more specific error messages
             if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
-                toast.error('Cannot connect to backend server. Please ensure the backend is running on http://localhost:8000');
+                toast.error('Cannot connect to backend server. Please ensure the backend is running on http://localhost:8001');
             } else if (error.response?.status === 422) {
                 toast.error(`Invalid request data: ${error.response.data.detail || 'Please check your input'}`);
             } else if (error.response?.status === 500) {

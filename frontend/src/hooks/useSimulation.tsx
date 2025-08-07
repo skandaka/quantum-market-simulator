@@ -19,7 +19,7 @@ export const useSimulation = () => {
 
     useEffect(() => {
         // Initialize WebSocket connection
-        const socketInstance = io(import.meta.env.VITE_WS_URL || 'ws://localhost:8000', {
+        const socketInstance = io(import.meta.env.VITE_WS_URL || 'ws://localhost:8001', {
             path: '/ws',
             transports: ['websocket'],
         });

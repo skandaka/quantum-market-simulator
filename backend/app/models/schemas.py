@@ -49,12 +49,14 @@ class SentimentAnalysis(BaseModel):
 
 
 class PriceScenario(BaseModel):
-    """Price scenario for simulation"""
+    """Price scenario for simulation with quantum support"""
     scenario_id: int
     price_path: List[float]
     returns_path: List[float]
     volatility_path: List[float]
     probability_weight: float = Field(..., ge=0.0, le=1.0)
+    quantum_amplitude: Optional[float] = Field(None, ge=0.0, le=1.0, description="Quantum amplitude for this scenario")
+    quantum_phase: Optional[float] = Field(None, description="Quantum phase in radians")
     
     class Config:
         json_encoders = {
@@ -63,7 +65,7 @@ class PriceScenario(BaseModel):
 
 
 class MarketPrediction(BaseModel):
-    """Enhanced market prediction with detailed analysis"""
+    """Enhanced market prediction with detailed analysis and quantum support"""
     asset: str
     current_price: float
     expected_return: float = Field(..., ge=-1.0, le=1.0)
@@ -78,6 +80,7 @@ class MarketPrediction(BaseModel):
     warnings: List[str] = Field(default_factory=list)
     is_crisis: Optional[bool] = None
     crisis_severity: Optional[float] = None
+    quantum_metrics: Optional[Dict[str, Any]] = Field(None, description="Quantum algorithm performance metrics")
     
     class Config:
         json_encoders = {

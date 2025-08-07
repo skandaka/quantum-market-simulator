@@ -32,7 +32,7 @@ const DiagnosticPanel: React.FC = () => {
             name: 'API Documentation',
             url: '/docs',
             test: async () => {
-                const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/docs`);
+                const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8001'}/docs`);
                 return response.ok;
             }
         },
@@ -45,7 +45,7 @@ const DiagnosticPanel: React.FC = () => {
             name: 'Quantum Status Endpoint',
             url: '/api/v1/quantum-status',
             test: async () => {
-                const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/quantum-status`);
+                const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8001'}/api/v1/quantum-status`);
                 return response.json();
             }
         },
@@ -113,7 +113,7 @@ const DiagnosticPanel: React.FC = () => {
             cookieEnabled: navigator.cookieEnabled,
             onLine: navigator.onLine,
             timestamp: new Date().toISOString(),
-            apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+            apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:8001',
             nodeEnv: import.meta.env.NODE_ENV,
             currentUrl: window.location.href
         };
@@ -156,7 +156,7 @@ const DiagnosticPanel: React.FC = () => {
                 <div className="mb-4">
                     <h4 className="text-sm font-semibold text-gray-300 mb-2">System Information</h4>
                     <div className="text-xs text-gray-400 space-y-1">
-                        <div>API URL: {import.meta.env.VITE_API_URL || 'http://localhost:8000'}</div>
+                        <div>API URL: {import.meta.env.VITE_API_URL || 'http://localhost:8001'}</div>
                         <div>Online: {navigator.onLine ? 'Yes' : 'No'}</div>
                         <div>Environment: {import.meta.env.NODE_ENV}</div>
                     </div>
@@ -219,7 +219,7 @@ const DiagnosticPanel: React.FC = () => {
                         <h4 className="text-sm font-semibold text-yellow-200 mb-2">Quick Fixes:</h4>
                         <ul className="text-xs text-yellow-100 space-y-1">
                             <li>• Make sure backend is running: <code>uvicorn app.main:app --reload</code></li>
-                            <li>• Check if port 8000 is free: <code>lsof -i :8000</code></li>
+                            <li>• Check if port 8001 is free: <code>lsof -i :8001</code></li>
                             <li>• Verify CORS settings in backend config</li>
                             <li>• Clear browser cache and refresh</li>
                             <li>• Check browser console for additional errors</li>

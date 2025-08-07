@@ -14,10 +14,6 @@ from app.models.schemas import (
 from app.quantum.quantum_simulator import QuantumSimulator
 from app.ml.market_predictor import EnhancedMarketPredictor
 
-from app.config import settings
-
-logger = logging.getLogger(__name__)
-
 # Phase 4 imports with error handling
 try:
     from app.ml.hybrid_quantum_classical_pipeline import HybridQuantumClassicalPipeline
@@ -28,6 +24,10 @@ try:
 except ImportError as e:
     logger.warning(f"Phase 4 components not available: {e}")
     PHASE4_AVAILABLE = False
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class UnifiedMarketSimulator:
@@ -48,7 +48,7 @@ class UnifiedMarketSimulator:
 
     def __init__(self, classiq_client=None):
         self.classiq_client = classiq_client
-        self.quantum_simulator = QuantumSimulator(classiq_client)
+        self.quantum_simulator = QuantumSimulator()
         self.market_predictor = EnhancedMarketPredictor()
         
         # Phase 4 components (conditional initialization)
@@ -68,12 +68,9 @@ class UnifiedMarketSimulator:
     async def initialize(self):
         """Initialize all simulator components"""
         try:
-            # Initialize core components (if they have initialize methods)
-            if hasattr(self.quantum_simulator, 'initialize'):
-                await self.quantum_simulator.initialize()
-            
-            if hasattr(self.market_predictor, 'initialize'):
-                await self.market_predictor.initialize()
+            # Initialize core components
+            await self.quantum_simulator.initialize()
+            await self.market_predictor.initialize()
             
             # Initialize Phase 4 components if available
             if PHASE4_AVAILABLE:
@@ -253,54 +250,20 @@ class UnifiedMarketSimulator:
     async def _run_standard_simulation(self, news_data: List[str], target_assets: List[str], quantum_enhanced: bool) -> Dict[str, Any]:
         """Standard simulation method (legacy support)"""
         try:
-            # Simple sentiment analysis (without quantum analyzer)
-            sentiment_score = np.mean([len(text.split()) / 20.0 for text in news_data])  # Simple heuristic
-            sentiment_score = max(-1.0, min(1.0, sentiment_score - 0.5))  # Normalize to [-1, 1]
-            
-            # Create mock sentiment results for compatibility
-            sentiment_results = [
-                {
-                    "sentiment": "positive" if sentiment_score > 0.1 else "negative" if sentiment_score < -0.1 else "neutral",
-                    "score": sentiment_score,
-                    "confidence": 0.6,
-                    "text": text
-                }
-                for text in news_data
-            ]
+            # Run sentiment analysis
+            sentiment_results = await self.quantum_simulator.analyze_market_sentiment(news_data)
             
             # Generate predictions for each asset
             predictions = []
             for asset in target_assets:
-                # Create mock market data
-                market_data = {
-                    "current_price": 100.0 + random.uniform(-50, 200),
-                    "volatility": random.uniform(0.15, 0.45),
-                    "volume": random.uniform(1000000, 10000000)
-                }
-                
-                try:
-                    # Use market predictor for predictions
-                    prediction = await self.market_predictor.predict_with_constraints(
-                        sentiment_results, market_data, asset
-                    )
-                    predictions.append(prediction)
-                except Exception as e:
-                    logger.warning(f"Market predictor failed for {asset}: {e}")
-                    # Create fallback prediction
-                    predictions.append({
-                        "asset": asset,
-                        "predicted_price": market_data["current_price"] * (1 + sentiment_score * 0.1),
-                        "confidence": 0.5,
-                        "fallback": True
-                    })
+                prediction = await self.market_predictor.predict_price_movement(
+                    asset, news_data, quantum_enhanced=quantum_enhanced
+                )
+                predictions.append(prediction)
             
             return {
                 "predictions": predictions,
-                "sentiment_analysis": {
-                    "overall_sentiment": sentiment_score,
-                    "confidence": 0.6,
-                    "news_count": len(news_data)
-                },
+                "sentiment_analysis": sentiment_results,
                 "quantum_enhanced": quantum_enhanced,
                 "simulation_type": "standard"
             }
@@ -338,7 +301,7 @@ class UnifiedMarketSimulator:
         
         return market_data
     
-    def _create_market_context(self, market_data: Dict[str, Any], context: Optional[Dict[str, Any]]):
+    def _create_market_context(self, market_data: Dict[str, Any], context: Optional[Dict[str, Any]]) -> MarketContext:
         """Create market context for advanced sentiment analysis"""
         # Calculate market-wide volatility
         volatilities = [data.get("volatility", 0.25) for data in market_data.values()]
