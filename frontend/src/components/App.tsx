@@ -16,6 +16,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 // Import components
 import NewsInput from './NewsInput';
+import { StockSelector } from './StockSelector';
+import { QuantumVisualizationPage } from './QuantumVisualizationPage';
 import {
     BlochSphereNetwork,
     WavefunctionCollapse,
@@ -353,6 +355,17 @@ const App: React.FC = () => {
                             />
                         </div>
 
+                        {/* Stock Selection with CSV Upload */}
+                        <StockSelector
+                            selectedAssets={selectedAssets}
+                            onAssetsChange={setSelectedAssets}
+                            onPortfolioUpload={(portfolio) => {
+                                // Handle full portfolio data if needed
+                                setPortfolio(portfolio);
+                                toast.success('Portfolio loaded successfully');
+                            }}
+                        />
+
                         {/* Simulation Settings */}
                         <div className="bg-gray-800 rounded-lg p-6">
                             <h3 className="text-lg font-semibold text-white mb-4">Simulation Settings</h3>
@@ -611,59 +624,11 @@ const App: React.FC = () => {
                 )}
 
                 {/* Visualizations Tab */}
-                {activeTab === 'visualization' && (
-                    <div className="space-y-8">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            {/* Bloch Sphere Network */}
-                            <div>
-                                <h3 className="text-xl font-semibold text-white mb-4">Quantum State Network</h3>
-                                <BlochSphereNetwork
-                                    quantumStates={quantumStates}
-                                    correlations={correlations}
-                                />
-                            </div>
-
-                            {/* Wavefunction Collapse */}
-                            <div>
-                                <h3 className="text-xl font-semibold text-white mb-4">Wavefunction Collapse</h3>
-                                <WavefunctionCollapse
-                                    superposition={superposition}
-                                    measurement={measurement}
-                                    onComplete={() => setMeasurement(measurement === 0 ? 1 : 0)}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            {/* Market Hypercube */}
-                            <div>
-                                <h3 className="text-xl font-semibold text-white mb-4">4D Market Hypercube</h3>
-                                <MarketHypercube
-                                    data={marketData}
-                                    selectedDimensions={['price', 'volatility', 'time', 'quantum']}
-                                />
-                            </div>
-
-                            {/* Quantum Circuit */}
-                            <div>
-                                <h3 className="text-xl font-semibold text-white mb-4">Quantum Circuit Execution</h3>
-                                <QuantumCircuitLiveView
-                                    circuit={quantumCircuit}
-                                    gates={quantumGates}
-                                    isExecuting={isExecutingCircuit}
-                                />
-                                <div className="mt-4 text-center">
-                                    <button
-                                        onClick={executeQuantumCircuit}
-                                        disabled={isExecutingCircuit}
-                                        className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg disabled:opacity-50"
-                                    >
-                                        {isExecutingCircuit ? 'Executing...' : 'Execute Circuit'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                {activeTab === 'visualization' && simulationResults && (
+                    <QuantumVisualizationPage
+                        results={simulationResults}
+                        selectedAssets={selectedAssets}
+                    />
                 )}
 
                 {/* Portfolio Analysis Tab */}

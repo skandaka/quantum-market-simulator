@@ -210,11 +210,14 @@ class AdvancedSentimentAnalyzer:
 
     async def _extract_raw_sentiment(self, news_text: str) -> Dict[str, Any]:
         """
-        PHASE 4.3.2: Extract raw sentiment from text
+        PHASE 4.3.2: Extract raw sentiment from text with enhanced crisis detection
         """
         try:
             # Clean and preprocess text
             cleaned_text = self._preprocess_text(news_text)
+            
+            # ENHANCED: Apply crisis detection first
+            crisis_result = self._detect_crisis_keywords(news_text)
             
             # Apply market-specific sentiment lexicon
             lexicon_sentiment = self._calculate_lexicon_sentiment(cleaned_text)
@@ -222,21 +225,63 @@ class AdvancedSentimentAnalyzer:
             # Extract key financial entities and events
             financial_entities = self._extract_financial_entities(cleaned_text)
             
-            # Calculate base sentiment score
+            # Calculate base sentiment score with crisis adjustment
             base_score = lexicon_sentiment["score"]
+            
+            # Apply crisis impact if detected
+            if crisis_result["is_crisis"]:
+                crisis_impact = crisis_result["severity"] * crisis_result["impact_multiplier"]
+                base_score = min(base_score + crisis_impact, -0.3)  # Ensure negative for crisis
+                confidence = min(0.95, crisis_result["severity"])
+            else:
+                confidence = lexicon_sentiment["confidence"]
+            
             base_sentiment = self._score_to_sentiment(base_score)
             
             return {
                 "sentiment": base_sentiment,
                 "score": base_score,
-                "confidence": lexicon_sentiment["confidence"],
+                "confidence": confidence,
                 "financial_entities": financial_entities,
-                "key_phrases": lexicon_sentiment["key_phrases"]
+                "key_phrases": lexicon_sentiment["key_phrases"],
+                "crisis_indicators": crisis_result if crisis_result["is_crisis"] else None
             }
             
         except Exception as e:
             logger.error(f"Raw sentiment extraction failed: {e}")
             return {"sentiment": "neutral", "score": 0.0, "confidence": 0.5}
+
+    def _detect_crisis_keywords(self, text: str) -> Dict[str, Any]:
+        """Enhanced crisis keyword detection"""
+        # Import crisis keywords from our enhanced analyzer
+        from app.services.sentiment_analyzer import CRISIS_KEYWORDS
+        
+        text_lower = text.lower()
+        detected_crises = []
+        total_severity = 0.0
+        impact_multiplier = 0.0
+        
+        for category, details in CRISIS_KEYWORDS.items():
+            for keyword in details["keywords"]:
+                if keyword.lower() in text_lower:
+                    detected_crises.append({
+                        "category": category,
+                        "keyword": keyword,
+                        "severity": details["severity"]
+                    })
+                    total_severity = max(total_severity, details["severity"])
+                    impact_multiplier = min(impact_multiplier, details["impact_multiplier"])
+        
+        is_crisis = len(detected_crises) > 0
+        
+        return {
+            "is_crisis": is_crisis,
+            "detected_keywords": [d["keyword"] for d in detected_crises],
+            "categories": list(set(d["category"] for d in detected_crises)),
+            "severity": total_severity,
+            "impact_multiplier": impact_multiplier,
+            "crisis_count": len(detected_crises)
+        }
 
     async def _apply_quantum_sentiment_enhancement(
         self, 

@@ -101,27 +101,49 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, isLoading 
 
     return (
         <div className="space-y-6">
-            {/* Header with View Mode Selector */}
+            {/* Header with View Mode Selector and Stock Dropdown */}
             <div className="bg-gradient-to-r from-purple-900/50 to-blue-900/50 rounded-xl p-6 border border-purple-700/50">
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-2xl font-bold text-white flex items-center">
                         <ChartBarIcon className="w-7 h-7 mr-3 text-purple-400" />
                         Market Impact Analysis
                     </h2>
-                    <div className="flex space-x-2">
-                        {['overview', 'detailed', 'comparison'].map((mode) => (
-                            <button
-                                key={mode}
-                                onClick={() => setViewMode(mode as any)}
-                                className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                                    viewMode === mode
-                                        ? 'bg-purple-600 text-white shadow-lg'
-                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                }`}
-                            >
-                                {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                            </button>
-                        ))}
+                    <div className="flex items-center space-x-4">
+                        {/* Stock Selector Dropdown */}
+                        {results?.market_predictions?.length > 1 && (
+                            <div className="relative">
+                                <select
+                                    value={selectedAsset}
+                                    onChange={(e) => setSelectedAsset(e.target.value)}
+                                    className="appearance-none bg-gray-700 text-white px-4 py-2 pr-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 border border-gray-600"
+                                >
+                                    <option value="">All Stocks</option>
+                                    {results.market_predictions.map((prediction: any) => (
+                                        <option key={prediction.asset} value={prediction.asset}>
+                                            {prediction.asset}
+                                        </option>
+                                    ))}
+                                </select>
+                                <ChevronDownIcon className="absolute right-2 top-3 w-4 h-4 text-gray-400 pointer-events-none" />
+                            </div>
+                        )}
+                        
+                        {/* View Mode Selector */}
+                        <div className="flex space-x-2">
+                            {['overview', 'detailed', 'comparison'].map((mode) => (
+                                <button
+                                    key={mode}
+                                    onClick={() => setViewMode(mode as any)}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                        viewMode === mode
+                                            ? 'bg-purple-600 text-white shadow-lg'
+                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                    }`}
+                                >
+                                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 

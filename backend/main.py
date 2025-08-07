@@ -31,10 +31,13 @@ if __name__ == "__main__":
     logger.info(f"Debug mode: {settings.debug}")
     logger.info(f"Port: {settings.port}")
 
+    # Use port 8001 to avoid conflicts with other services
+    port = int(os.getenv("PORT", 8001))
+    
     uvicorn.run(
         "main:app",
         host=settings.host,
-        port=settings.port,
+        port=port,
         reload=settings.debug,
         log_level="info"
     )

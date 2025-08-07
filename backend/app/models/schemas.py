@@ -38,7 +38,7 @@ class SentimentAnalysis(BaseModel):
     sentiment: SentimentType
     confidence: float = Field(..., ge=0.0, le=1.0)
     quantum_sentiment_vector: List[float] = Field(default_factory=list)
-    classical_sentiment_score: float = Field(default=0.0, ge=-1.0, le=1.0)
+    classical_sentiment_score: float = Field(default=0.0, ge=-2.0, le=2.0)  # Extended range for crisis detection
     entities_detected: List[Dict[str, Any]] = Field(default_factory=list)
     key_phrases: List[str] = Field(default_factory=list)
     market_impact_keywords: List[str] = Field(default_factory=list)

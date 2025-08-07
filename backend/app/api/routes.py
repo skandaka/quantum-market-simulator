@@ -30,9 +30,13 @@ from app.models.schemas import (
     NewsInput
 )
 from app.config import settings
+from app.services.sentiment_analyzer import EnhancedSentimentAnalyzer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Initialize enhanced sentiment analyzer
+enhanced_sentiment_analyzer = EnhancedSentimentAnalyzer()
 
 # Services will be initialized when needed to avoid circular imports
 
@@ -113,30 +117,50 @@ async def simulate_market(request: SimulationRequest):
                         }
                     }
                 else:
-                    # Classical fallback
+                    # Enhanced classical fallback using EnhancedSentimentAnalyzer
+                    sentiment_result = await enhanced_sentiment_analyzer.analyze_single(news_input.content)
                     enhanced_sentiment = {
                         "headline": news_input.content[:200],
-                        "sentiment": "neutral",
-                        "confidence": 0.75,
-                        "entities": [],
-                        "key_phrases": [],
-                        "market_keywords": [],
-                        "quantum_features": None
+                        "sentiment": sentiment_result.sentiment.value if hasattr(sentiment_result.sentiment, 'value') else str(sentiment_result.sentiment),
+                        "confidence": sentiment_result.confidence,
+                        "entities": sentiment_result.entities_detected,
+                        "key_phrases": sentiment_result.key_phrases,
+                        "market_keywords": sentiment_result.market_impact_keywords,
+                        "quantum_features": None,
+                        "crisis_detected": sentiment_result.crisis_indicators is not None,
+                        "crisis_indicators": sentiment_result.crisis_indicators,
+                        "classical_score": sentiment_result.classical_sentiment_score
                     }
                 
                 enhanced_sentiment_results.append(enhanced_sentiment)
                 
             except Exception as e:
                 logger.error(f"Sentiment analysis failed for item {i}: {e}")
-                enhanced_sentiment_results.append({
-                    "headline": news_input.content[:200],
-                    "sentiment": "neutral",
-                    "confidence": 0.5,
-                    "entities": [],
-                    "key_phrases": [],
-                    "market_keywords": [],
-                    "error": str(e)
-                })
+                # Try enhanced sentiment analyzer as final fallback
+                try:
+                    sentiment_result = await enhanced_sentiment_analyzer.analyze_single(news_input.content)
+                    enhanced_sentiment_results.append({
+                        "headline": news_input.content[:200],
+                        "sentiment": sentiment_result.sentiment.value if hasattr(sentiment_result.sentiment, 'value') else str(sentiment_result.sentiment),
+                        "confidence": sentiment_result.confidence,
+                        "entities": sentiment_result.entities_detected,
+                        "key_phrases": sentiment_result.key_phrases,
+                        "market_keywords": sentiment_result.market_impact_keywords,
+                        "crisis_detected": sentiment_result.crisis_indicators is not None,
+                        "crisis_indicators": sentiment_result.crisis_indicators,
+                        "classical_score": sentiment_result.classical_sentiment_score,
+                        "error": str(e)
+                    })
+                except Exception as fallback_error:
+                    enhanced_sentiment_results.append({
+                        "headline": news_input.content[:200],
+                        "sentiment": "neutral",
+                        "confidence": 0.5,
+                        "entities": [],
+                        "key_phrases": [],
+                        "market_keywords": [],
+                        "error": f"All sentiment analysis failed: {e}, {fallback_error}"
+                    })
 
         # PHASE 1.2: Enhanced Quantum Monte Carlo for Market Predictions
         enhanced_predictions = []
@@ -573,19 +597,22 @@ def _generate_enhanced_warnings(sentiment_results: list, predictions: list) -> l
 @router.post("/analyze-sentiment")
 async def analyze_sentiment(content: str = Form(...)):
     """
-    Quick sentiment analysis endpoint
+    Quick sentiment analysis endpoint using enhanced sentiment analyzer
     """
     try:
-        # Mock sentiment analysis for now
-        import random
-        sentiments = ["very_positive", "positive", "neutral", "negative", "very_negative"]
-
+        # Use enhanced sentiment analyzer with crisis detection
+        result = await enhanced_sentiment_analyzer.analyze_single(content)
+        
         return {
-            "sentiment": random.choice(sentiments),
-            "confidence": random.uniform(0.6, 0.95),
-            "score": random.uniform(-1, 1),
-            "keywords": ["market", "analysis"],
-            "crisis_detected": False
+            "sentiment": result.sentiment.value if hasattr(result.sentiment, 'value') else str(result.sentiment),
+            "confidence": result.confidence,
+            "score": result.classical_sentiment_score,
+            "keywords": result.key_phrases,
+            "market_keywords": result.market_impact_keywords,
+            "entities": result.entities_detected,
+            "crisis_detected": result.crisis_indicators is not None,
+            "crisis_indicators": result.crisis_indicators,
+            "quantum_vector": result.quantum_sentiment_vector
         }
 
     except Exception as e:

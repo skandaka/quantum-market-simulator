@@ -20,7 +20,7 @@ class Settings(PydanticBaseSettings):
 
     # Server settings
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 8001
     workers: int = 4
 
     # Security
@@ -29,7 +29,7 @@ class Settings(PydanticBaseSettings):
     access_token_expire_minutes: int = 30
 
     # CORS
-    cors_origins: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins: List[str] = ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"]
 
     # Database (if needed)
     database_url: Optional[str] = os.getenv("DATABASE_URL")
